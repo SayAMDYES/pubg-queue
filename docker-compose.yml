@@ -1,0 +1,18 @@
+version: "3.8"
+services:
+  pubg-queue:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - DB_PATH=/data/pubg_queue.db
+      - PORT=8080
+      - ADMIN_USER=admin
+      - ADMIN_PASS_HASH=${ADMIN_PASS_HASH}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - CSRF_SECRET=${CSRF_SECRET}
+      - TZ=Asia/Shanghai
+      - SECURE_COOKIE=false
+    restart: unless-stopped

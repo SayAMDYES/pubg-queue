@@ -1,0 +1,70 @@
+{{ define "event_detail_content" }}
+<h2>{{ .Event.EventDate }} 活动</h2>
+{{ if .Event.Note }}<p class="event-note">{{ .Event.Note }}</p>{{ end }}
+{{ if not .Event.Open }}<div class="alert alert-warning">&#9888; 本场活动已关闭报名</div>{{ end }}
+{{ if .ErrMsg }}<div class="alert alert-error">{{ .ErrMsg }}</div>{{ end }}
+
+<div class="teams-grid">
+{{ range .Teams }}
+<div class="team-card">
+  <h3>第 {{ .TeamNo }} 队</h3>
+  <ul class="slot-list">
+  {{ range .Slots }}
+  <li class="slot{{ if .Filled }} filled{{ end }}">
+    <span class="slot-no">{{ .SlotNo }}</span>
+    {{ if .Filled }}<span class="slot-name">{{ .Name }}</span>{{ else }}<span class="slot-empty">空位</span>{{ end }}
+  </li>
+  {{ end }}
+  </ul>
+</div>
+{{ end }}
+</div>
+
+{{ if .Waitlist }}
+<div class="waitlist">
+  <h3>候补名单</h3>
+  <ol>
+  {{ range .Waitlist }}<li>{{ . }}</li>{{ end }}
+  </ol>
+</div>
+{{ end }}
+
+{{ if .Event.Open }}
+<div class="register-form">
+  <h3>报名参加</h3>
+  <form method="POST" action="/events/{{ .Event.ID }}/register">
+    <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+    <div class="form-group">
+      <label>游戏名称（1-20字符，中英文/数字/下划线）</label>
+      <input type="text" name="name" required maxlength="20">
+    </div>
+    <button type="submit" class="btn btn-primary">确认报名</button>
+  </form>
+</div>
+{{ end }}
+{{ end }}
+
+{{ define "event_detail.html" }}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ .Title }} - 趴布鸡排队</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a href="/" class="logo">🐔 趴布鸡排队</a>
+  </div>
+</header>
+<main class="container">
+{{ template "event_detail_content" . }}
+</main>
+<footer class="site-footer">
+  <div class="container"><p>趴布鸡排队系统 &copy; 2024</p></div>
+</footer>
+</body>
+</html>
+{{ end }}

@@ -1,0 +1,25 @@
+{{ define "error.html" }}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>错误 {{ .Code }} - 趴布鸡排队</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a href="/" class="logo">🐔 趴布鸡排队</a>
+  </div>
+</header>
+<main class="container">
+<div class="error-box">
+  <h2>错误 {{ .Code }}</h2>
+  <p>{{ .Message }}</p>
+  <a href="/" class="btn btn-primary">返回首页</a>
+</div>
+</main>
+</body>
+</html>
+{{ end }}

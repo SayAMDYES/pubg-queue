@@ -1,0 +1,39 @@
+{{ define "register_success.html" }}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>报名成功 - 趴布鸡排队</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a href="/" class="logo">🐔 趴布鸡排队</a>
+  </div>
+</header>
+<main class="container">
+<div class="success-box">
+  <h2>&#10003; 报名成功！</h2>
+  <p>欢迎，<strong>{{ .Name }}</strong>！</p>
+  {{ if eq .Status "assigned" }}
+  <p>您已成功获得队伍席位。</p>
+  {{ else }}
+  <p>您已加入<strong>候补名单</strong>，如有席位将自动晋升。</p>
+  {{ end }}
+
+  <div class="token-box">
+    <h3>&#128273; 离队令牌（请妥善保存！）</h3>
+    <p class="warning">此令牌只显示一次，请截图或复制保存！</p>
+    <code class="token">{{ .LeaveToken }}</code>
+    <p>如需离队，请在离队页面输入此令牌。</p>
+  </div>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="container"><p>趴布鸡排队系统 &copy; 2024</p></div>
+</footer>
+</body>
+</html>
+{{ end }}

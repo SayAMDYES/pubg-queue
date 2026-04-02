@@ -1,0 +1,13 @@
+# 编译产物
+pubg-queue
+*.exe
+*.out
+
+# 数据目录（SQLite数据库）
+data/
+
+# 环境变量文件（含密钥）
+.env
+
+# Go工具缓存
+vendor/

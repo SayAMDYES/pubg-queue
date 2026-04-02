@@ -1,0 +1,61 @@
+{{ define "content" }}
+<div class="calendar-header">
+  <a href="/?month={{ .PrevMonth }}" class="btn btn-secondary">&lt; 上月</a>
+  <h2>{{ .MonthStr }}</h2>
+  <a href="/?month={{ .NextMonth }}" class="btn btn-secondary">下月 &gt;</a>
+</div>
+<div class="calendar-grid">
+  <div class="weekday-header">日</div>
+  <div class="weekday-header">一</div>
+  <div class="weekday-header">二</div>
+  <div class="weekday-header">三</div>
+  <div class="weekday-header">四</div>
+  <div class="weekday-header">五</div>
+  <div class="weekday-header">六</div>
+  {{ range nseq .FirstWeekday }}
+  <div class="calendar-day empty"></div>
+  {{ end }}
+  {{ range .Days }}
+  <div class="calendar-day{{ if .Past }} past{{ end }}{{ if .IsToday }} today{{ end }}{{ if .HasEvent }} has-event{{ end }}{{ if .Full }} full{{ end }}">
+    <span class="day-num">{{ .Day }}</span>
+    {{ if .HasEvent }}
+    <a href="/events/{{ .EventID }}" class="event-link">
+      {{ if .Open }}
+        {{ if .Full }}<span class="badge badge-full">满员</span>{{ else }}<span class="badge badge-open">报名中</span>{{ end }}
+      {{ else }}
+        <span class="badge badge-closed">已关闭</span>
+      {{ end }}
+      <small>{{ .Registered }}/{{ .Capacity }}</small>
+    </a>
+    {{ end }}
+  </div>
+  {{ end }}
+</div>
+{{ end }}
+
+{{ define "calendar.html" }}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ .Title }} - 趴布鸡排队</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a href="/" class="logo">🐔 趴布鸡排队</a>
+  </div>
+</header>
+<main class="container">
+{{ template "content" . }}
+</main>
+<footer class="site-footer">
+  <div class="container">
+    <p>趴布鸡排队系统 &copy; 2024</p>
+  </div>
+</footer>
+</body>
+</html>
+{{ end }}
