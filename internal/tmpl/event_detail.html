@@ -1,8 +1,27 @@
 {{ define "event_detail_content" }}
 <h2>{{ .Event.EventDate }} 活动</h2>
-{{ if .Event.Note }}<p class="event-note">{{ .Event.Note }}</p>{{ end }}
-{{ if not .Event.Open }}<div class="alert alert-warning">&#9888; 本场活动已关闭报名</div>{{ end }}
-{{ if .ErrMsg }}<div class="alert alert-error">{{ .ErrMsg }}</div>{{ end }}
+
+<div class="event-meta">
+  {{ if and .Event.StartTime .Event.EndTime }}
+  <p class="event-time-display">🕐 活动时间：{{ .Event.StartTime }} - {{ .Event.EndTime }}</p>
+  {{ else if .Event.StartTime }}
+  <p class="event-time-display">🕐 活动时间：{{ .Event.StartTime }} 开始</p>
+  {{ end }}
+  {{ if .Event.Note }}<p>📝 {{ .Event.Note }}</p>{{ end }}
+  <p>状态：{{ if .Event.Open }}<span class="badge badge-open">报名开放</span>{{ else }}<span class="badge badge-closed">已关闭</span>{{ end }}</p>
+</div>
+
+{{ if not .Event.Open }}<div class="alert alert-warning">⚠ 本场活动已关闭报名</div>{{ end }}
+{{ if .ErrMsg }}
+<div class="alert alert-error">
+  {{ if eq .ErrMsg "invalid_name" }}游戏名称格式不正确（1-20字符，中英文/数字/下划线）
+  {{ else if eq .ErrMsg "invalid_phone" }}手机号格式不正确，请输入中国大陆手机号
+  {{ else if eq .ErrMsg "phone_already_registered" }}该手机号已报名此活动
+  {{ else if eq .ErrMsg "event_closed" }}活动已关闭报名
+  {{ else }}报名失败：{{ .ErrMsg }}
+  {{ end }}
+</div>
+{{ end }}
 
 <div class="teams-grid">
 {{ range .Teams }}
@@ -12,7 +31,12 @@
   {{ range .Slots }}
   <li class="slot{{ if .Filled }} filled{{ end }}">
     <span class="slot-no">{{ .SlotNo }}</span>
-    {{ if .Filled }}<span class="slot-name">{{ .Name }}</span>{{ else }}<span class="slot-empty">空位</span>{{ end }}
+    {{ if .Filled }}
+      <span class="slot-name">{{ .Name }}</span>
+      <span class="slot-phone">{{ .Phone }}</span>
+    {{ else }}
+      <span class="slot-empty">空位</span>
+    {{ end }}
   </li>
   {{ end }}
   </ul>
@@ -24,7 +48,7 @@
 <div class="waitlist">
   <h3>候补名单</h3>
   <ol>
-  {{ range .Waitlist }}<li>{{ . }}</li>{{ end }}
+  {{ range .Waitlist }}<li>{{ .Name }} <span class="waitlist-phone">{{ .Phone }}</span></li>{{ end }}
   </ol>
 </div>
 {{ end }}
@@ -32,16 +56,32 @@
 {{ if .Event.Open }}
 <div class="register-form">
   <h3>报名参加</h3>
-  <form method="POST" action="/events/{{ .Event.ID }}/register">
+  <form method="POST" action="/date/{{ .Event.EventDate }}/register">
     <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
     <div class="form-group">
-      <label>游戏名称（1-20字符，中英文/数字/下划线）</label>
-      <input type="text" name="name" required maxlength="20">
+      <label>游戏名称（1-20字符）</label>
+      <input type="text" name="name" required maxlength="20" placeholder="请输入游戏昵称">
     </div>
-    <button type="submit" class="btn btn-primary">确认报名</button>
+    <div class="form-group">
+      <label>手机号（用于防止重复报名）</label>
+      <input type="tel" name="phone" required maxlength="11" pattern="1[3-9][0-9]{9}" placeholder="请输入中国大陆手机号">
+    </div>
+    <button type="submit" class="btn btn-primary btn-block-mobile">确认报名</button>
   </form>
 </div>
 {{ end }}
+
+<div class="leave-form">
+  <h3>🚪 离队（输入离队码）</h3>
+  <form method="POST" action="/leave">
+    <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+    <div class="form-group">
+      <label>6位离队码</label>
+      <input type="text" name="token" required maxlength="6" pattern="\d{6}" placeholder="000000" class="form-control token-input">
+    </div>
+    <button type="submit" class="btn btn-danger btn-block-mobile">确认离队</button>
+  </form>
+</div>
 {{ end }}
 
 {{ define "event_detail.html" }}

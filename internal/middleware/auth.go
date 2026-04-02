@@ -170,7 +170,7 @@ func (a *AuthMiddleware) LoginPost(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
-	if username != a.cfg.AdminUser {
+	if username != config.AdminUsername {
 		recordFailure(ip)
 		http.Redirect(w, r, "/admin/login?err=invalid", http.StatusFound)
 		return

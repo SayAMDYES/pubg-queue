@@ -12,7 +12,6 @@ import (
 type CalendarDay struct {
 	Day        int
 	Date       string
-	EventID    int64
 	HasEvent   bool
 	Open       bool
 	Full       bool
@@ -20,6 +19,7 @@ type CalendarDay struct {
 	IsToday    bool
 	Registered int
 	Capacity   int
+	StartTime  string // HH:MM，可为空
 }
 
 func CalendarHandler(db *sql.DB) http.HandlerFunc {
@@ -48,7 +48,7 @@ func CalendarHandler(db *sql.DB) http.HandlerFunc {
 		endDate := lastDay.Format("2006-01-02")
 
 		rows, err := db.Query(
-			`SELECT id, event_date, open, team_count,
+			`SELECT event_date, open, team_count, COALESCE(start_time,''),
 				(SELECT COUNT(*) FROM registrations WHERE event_id=events.id AND status='assigned') as reg_count
 			FROM events WHERE event_date >= ? AND event_date <= ? ORDER BY event_date`,
 			startDate, endDate,
@@ -61,22 +61,22 @@ func CalendarHandler(db *sql.DB) http.HandlerFunc {
 
 		eventMap := map[string]CalendarDay{}
 		for rows.Next() {
-			var id int64
 			var dateStr string
 			var open int
 			var teamCount int
+			var startTime string
 			var regCount int
-			if err := rows.Scan(&id, &dateStr, &open, &teamCount, &regCount); err != nil {
+			if err := rows.Scan(&dateStr, &open, &teamCount, &startTime, &regCount); err != nil {
 				continue
 			}
 			capacity := teamCount * 4
 			eventMap[dateStr] = CalendarDay{
-				EventID:    id,
 				HasEvent:   true,
 				Open:       open == 1,
 				Full:       regCount >= capacity,
 				Registered: regCount,
 				Capacity:   capacity,
+				StartTime:  startTime,
 			}
 		}
 
@@ -91,12 +91,12 @@ func CalendarHandler(db *sql.DB) http.HandlerFunc {
 				IsToday: dateStr == today,
 			}
 			if ev, ok := eventMap[dateStr]; ok {
-				cd.EventID = ev.EventID
 				cd.HasEvent = ev.HasEvent
 				cd.Open = ev.Open
 				cd.Full = ev.Full
 				cd.Registered = ev.Registered
 				cd.Capacity = ev.Capacity
+				cd.StartTime = ev.StartTime
 			}
 			days = append(days, cd)
 		}

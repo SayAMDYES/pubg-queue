@@ -17,7 +17,7 @@
 <main class="container">
 <h2>{{ .Title }}</h2>
 {{ if .Event }}
-<form method="POST" action="/admin/events/{{ .Event.ID }}">
+<form method="POST" action="/admin/events/{{ .Event.EventDate }}">
 {{ else }}
 <form method="POST" action="/admin/events">
 {{ end }}
@@ -31,7 +31,15 @@
     <input type="number" name="team_count" min="1" max="10" required {{ if .Event }}value="{{ .Event.TeamCount }}"{{ else }}value="2"{{ end }}>
   </div>
   <div class="form-group">
-    <label>备注</label>
+    <label>开始时间（可选，例如 20:00）</label>
+    <input type="time" name="start_time" {{ if .Event }}value="{{ .Event.StartTime }}"{{ end }}>
+  </div>
+  <div class="form-group">
+    <label>结束时间（可选，例如 23:00）</label>
+    <input type="time" name="end_time" {{ if .Event }}value="{{ .Event.EndTime }}"{{ end }}>
+  </div>
+  <div class="form-group">
+    <label>备注（可选）</label>
     <textarea name="note" rows="3">{{ if .Event }}{{ .Event.Note }}{{ end }}</textarea>
   </div>
   <button type="submit" class="btn btn-primary">保存</button>

@@ -9,10 +9,9 @@ services:
     environment:
       - DB_PATH=/data/pubg_queue.db
       - PORT=8080
-      - ADMIN_USER=admin
-      - ADMIN_PASS_HASH=${ADMIN_PASS_HASH}
       - SESSION_SECRET=${SESSION_SECRET}
       - CSRF_SECRET=${CSRF_SECRET}
       - TZ=Asia/Shanghai
       - SECURE_COOKIE=false
+    command: ["./pubg-queue", "--admin-pass", "${ADMIN_PASS}"]
     restart: unless-stopped

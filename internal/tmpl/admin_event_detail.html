@@ -1,0 +1,80 @@
+{{ define "admin_event_detail.html" }}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ .Title }} - 趴布鸡排队</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a href="/" class="logo">🐔 趴布鸡排队</a>
+    <nav>
+      <a href="/admin" class="nav-link">返回后台</a>
+    </nav>
+  </div>
+</header>
+<main class="container">
+<div class="admin-header">
+  <h2>{{ .Event.EventDate }} 报名详情</h2>
+  <div class="actions">
+    <a href="/admin/events/{{ .Event.EventDate }}/edit" class="btn btn-small">编辑活动</a>
+    <a href="/admin/events/{{ .Event.EventDate }}/export" class="btn btn-small btn-secondary">导出CSV</a>
+    <form method="POST" action="/admin/events/{{ .Event.EventDate }}/clear" style="display:inline" onsubmit="return confirm('确认清空所有报名？')">
+      <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+      <button type="submit" class="btn btn-small btn-danger">清空报名</button>
+    </form>
+  </div>
+</div>
+
+<div class="event-meta card-detail">
+  {{ if and .Event.StartTime .Event.EndTime }}
+  <p class="event-time-display">🕐 活动时间：{{ .Event.StartTime }} - {{ .Event.EndTime }}</p>
+  {{ else if .Event.StartTime }}
+  <p class="event-time-display">🕐 活动时间：{{ .Event.StartTime }} 开始</p>
+  {{ end }}
+  {{ if .Event.Note }}<p class="event-note">📝 {{ .Event.Note }}</p>{{ end }}
+  <p>状态：{{ if .Event.Open }}<span class="badge badge-open">报名开放</span>{{ else }}<span class="badge badge-closed">已关闭</span>{{ end }}</p>
+</div>
+
+<div class="table-wrap">
+<table class="admin-table">
+  <thead>
+    <tr>
+      <th>昵称</th>
+      <th>手机号（完整）</th>
+      <th>状态</th>
+      <th>队伍</th>
+      <th>位置</th>
+      <th>报名时间</th>
+    </tr>
+  </thead>
+  <tbody>
+  {{ range .Registrations }}
+  <tr>
+    <td>{{ .Name }}</td>
+    <td><code>{{ .Phone }}</code></td>
+    <td>
+      {{ if eq .Status "assigned" }}<span class="badge badge-open">已入队</span>
+      {{ else if eq .Status "waitlist" }}<span class="badge badge-full">候补</span>
+      {{ else }}<span class="badge badge-closed">{{ .Status }}</span>{{ end }}
+    </td>
+    <td>{{ if .TeamNo }}第 {{ .TeamNo }} 队{{ else }}-{{ end }}</td>
+    <td>{{ if .SlotNo }}第 {{ .SlotNo }} 位{{ else }}-{{ end }}</td>
+    <td class="created-at-cell">{{ .CreatedAt }}</td>
+  </tr>
+  {{ else }}
+  <tr><td colspan="6" class="empty-msg">暂无报名记录</td></tr>
+  {{ end }}
+  </tbody>
+</table>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="container"><p>趴布鸡排队系统 &copy; 2024</p></div>
+</footer>
+</body>
+</html>
+{{ end }}

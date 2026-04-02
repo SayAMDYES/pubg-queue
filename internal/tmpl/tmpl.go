@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+
+	"github.com/SayAMDYES/pubg-queue/internal/service"
 )
 
 //go:embed *.html
@@ -23,6 +25,9 @@ func init() {
 		},
 		"mul": func(a, b int) int {
 			return a * b
+		},
+		"maskPhone": func(phone string) string {
+			return service.MaskPhone(phone)
 		},
 	}
 

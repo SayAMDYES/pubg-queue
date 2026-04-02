@@ -5,11 +5,13 @@ import (
 	"strconv"
 )
 
+// AdminUsername 是固定的管理员用户名
+const AdminUsername = "admin"
+
 type Config struct {
 	Port               string
 	DBPath             string
-	AdminUser          string
-	AdminPassHash      string
+	AdminPassHash      string // bcrypt 哈希，启动时由 --admin-pass 参数生成
 	SessionSecret      string
 	CSRFSecret         string
 	TZ                 string
@@ -23,8 +25,6 @@ func Load() *Config {
 	c := &Config{
 		Port:               getEnv("PORT", "8080"),
 		DBPath:             getEnv("DB_PATH", "./data/pubg_queue.db"),
-		AdminUser:          getEnv("ADMIN_USER", "admin"),
-		AdminPassHash:      getEnv("ADMIN_PASS_HASH", ""),
 		SessionSecret:      getEnv("SESSION_SECRET", "change-this-to-a-random-32-byte-string"),
 		CSRFSecret:         getEnv("CSRF_SECRET", "change-this-to-another-32byte-str!"),
 		TZ:                 getEnv("TZ", "Asia/Shanghai"),
