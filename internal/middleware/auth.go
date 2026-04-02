@@ -86,16 +86,19 @@ func saveSession(w http.ResponseWriter, db *sql.DB, cfg *config.Config, data *se
 	return nil
 }
 
-func deleteSession(w http.ResponseWriter, r *http.Request, db *sql.DB) {
+func deleteSession(w http.ResponseWriter, r *http.Request, db *sql.DB, cfg *config.Config) {
 	cookie, err := r.Cookie("session_id")
 	if err == nil {
 		db.Exec(`DELETE FROM sessions WHERE id=?`, cookie.Value)
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:   "session_id",
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
+		Name:     "session_id",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   cfg.SecureCookie,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
 	})
 }
 
@@ -189,6 +192,6 @@ func (a *AuthMiddleware) LoginPost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *AuthMiddleware) LogoutPost(w http.ResponseWriter, r *http.Request) {
-	deleteSession(w, r, a.db)
+	deleteSession(w, r, a.db, a.cfg)
 	http.Redirect(w, r, "/admin/login", http.StatusFound)
 }

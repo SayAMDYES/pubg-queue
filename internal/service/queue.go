@@ -18,34 +18,35 @@ func ValidateName(name string) bool {
 	return nameRe.MatchString(name)
 }
 
+// GenerateLeaveToken creates a cryptographically random leave token.
+// The hash is SHA256(plaintext) — deterministic and indexable.
+// salt is kept as an empty string for schema compatibility.
 func GenerateLeaveToken() (plaintext, hash, salt string, err error) {
 	rawBytes := make([]byte, 32)
 	if _, err = rand.Read(rawBytes); err != nil {
 		return
 	}
 	plaintext = hex.EncodeToString(rawBytes)
-
-	saltBytes := make([]byte, 16)
-	if _, err = rand.Read(saltBytes); err != nil {
-		return
-	}
-	salt = hex.EncodeToString(saltBytes)
-
-	saltDecoded, _ := hex.DecodeString(salt)
-	mac := hmac.New(sha256.New, saltDecoded)
-	mac.Write([]byte(plaintext))
-	hash = hex.EncodeToString(mac.Sum(nil))
+	hash = tokenHash(plaintext)
+	salt = ""
 	return
 }
 
-func VerifyToken(plaintext, hash, salt string) bool {
-	saltBytes, err := hex.DecodeString(salt)
-	if err != nil {
-		return false
-	}
-	mac := hmac.New(sha256.New, saltBytes)
-	mac.Write([]byte(plaintext))
-	expected := hex.EncodeToString(mac.Sum(nil))
+// GenerateLeaveTokenHash computes the hash for a given plaintext token.
+// Used by the leave handler to convert user-supplied token to its DB hash for direct lookup.
+func GenerateLeaveTokenHash(plaintext string) (_, hash, salt string, _ error) {
+	return plaintext, tokenHash(plaintext), "", nil
+}
+
+func tokenHash(plaintext string) string {
+	h := sha256.Sum256([]byte(plaintext))
+	return hex.EncodeToString(h[:])
+}
+
+// VerifyToken checks a plaintext token against its stored hash.
+// salt is unused (kept for backward compatibility).
+func VerifyToken(plaintext, hash, _ string) bool {
+	expected := tokenHash(plaintext)
 	return hmac.Equal([]byte(expected), []byte(hash))
 }
 
