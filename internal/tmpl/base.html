@@ -1,0 +1,26 @@
+{{ define "base" }}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ .Title }} - 趴布鸡排队</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a href="/" class="logo">🐔 趴布鸡排队</a>
+  </div>
+</header>
+<main class="container">
+{{ template "content" . }}
+</main>
+<footer class="site-footer">
+  <div class="container">
+    <p>趴布鸡排队系统 &copy; 2024</p>
+  </div>
+</footer>
+</body>
+</html>
+{{ end }}

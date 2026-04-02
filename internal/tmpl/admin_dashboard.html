@@ -1,0 +1,68 @@
+{{ define "admin_dashboard.html" }}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理后台 - 趴布鸡排队</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a href="/" class="logo">🐔 趴布鸡排队</a>
+    <nav>
+      <a href="/admin" class="nav-link active">后台</a>
+      <form method="POST" action="/admin/logout" style="display:inline">
+        <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+        <button type="submit" class="btn btn-small btn-secondary">退出</button>
+      </form>
+    </nav>
+  </div>
+</header>
+<main class="container">
+<div class="admin-header">
+  <h2>活动管理</h2>
+  <a href="/admin/events/new" class="btn btn-primary">+ 新建活动</a>
+</div>
+<table class="admin-table">
+  <thead>
+    <tr>
+      <th>日期</th>
+      <th>状态</th>
+      <th>队伍数</th>
+      <th>已报名</th>
+      <th>候补</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody>
+  {{ range .Events }}
+  <tr>
+    <td><a href="/events/{{ .ID }}">{{ .EventDate }}</a></td>
+    <td>{{ if .Open }}<span class="badge badge-open">开放</span>{{ else }}<span class="badge badge-closed">关闭</span>{{ end }}</td>
+    <td>{{ .TeamCount }}</td>
+    <td>{{ .RegisteredCount }} / {{ mul .TeamCount 4 }}</td>
+    <td>{{ .WaitlistCount }}</td>
+    <td class="actions">
+      <a href="/admin/events/{{ .ID }}/edit" class="btn btn-small">编辑</a>
+      <form method="POST" action="/admin/events/{{ .ID }}/toggle" style="display:inline">
+        <input type="hidden" name="gorilla.csrf.Token" value="{{ $.CSRFToken }}">
+        <button type="submit" class="btn btn-small btn-secondary">{{ if .Open }}关闭{{ else }}开放{{ end }}</button>
+      </form>
+      <form method="POST" action="/admin/events/{{ .ID }}/clear" style="display:inline" onsubmit="return confirm('确认清空所有报名？')">
+        <input type="hidden" name="gorilla.csrf.Token" value="{{ $.CSRFToken }}">
+        <button type="submit" class="btn btn-small btn-danger">清空</button>
+      </form>
+      <a href="/admin/events/{{ .ID }}/export" class="btn btn-small btn-secondary">导出CSV</a>
+    </td>
+  </tr>
+  {{ else }}
+  <tr><td colspan="6" class="empty-msg">暂无活动，请新建</td></tr>
+  {{ end }}
+  </tbody>
+</table>
+</main>
+</body>
+</html>
+{{ end }}
