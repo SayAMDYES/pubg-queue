@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,15 +19,24 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	adminPass := flag.String("admin-pass", "", "管理员明文密码（启动时哈希化，不写磁盘）")
+	flag.Parse()
 
-	if cfg.AdminPassHash != "" {
-		if _, err := bcrypt.Cost([]byte(cfg.AdminPassHash)); err != nil {
-			log.Printf("WARNING: ADMIN_PASS_HASH is not a valid bcrypt hash: %v", err)
-		}
-	} else {
-		log.Println("WARNING: ADMIN_PASS_HASH not set. Admin login will not work.")
+	if *adminPass == "" {
+		fmt.Fprintf(os.Stderr, "用法: %s --admin-pass <明文密码>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "示例: %s --admin-pass 'yourpassword'\n", os.Args[0])
+		os.Exit(1)
 	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(*adminPass), bcrypt.DefaultCost)
+	if err != nil {
+		log.Fatalf("bcrypt hash failed: %v", err)
+	}
+	// 清除明文，后续只使用哈希
+	*adminPass = ""
+
+	cfg := config.Load()
+	cfg.AdminPassHash = string(hash)
 
 	if err := os.MkdirAll("data", 0755); err != nil {
 		log.Fatalf("create data dir: %v", err)
@@ -68,8 +78,8 @@ func main() {
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	r.Get("/", handler.CalendarHandler(db))
-	r.Get("/events/{id}", handler.EventDetailHandler(db, cfg.AllowDuplicateName))
-	r.With(registerRL.RateLimit).Post("/events/{id}/register", handler.RegisterHandler(db, cfg.AllowDuplicateName))
+	r.Get("/date/{date}", handler.EventDetailHandler(db))
+	r.With(registerRL.RateLimit).Post("/date/{date}/register", handler.RegisterHandler(db, cfg.AllowDuplicateName))
 	r.With(leaveRL.RateLimit).Post("/leave", handler.LeaveHandler(db))
 
 	adminH := handler.NewAdminHandlers(db, cfg, authMW)
@@ -80,11 +90,12 @@ func main() {
 		r.With(authMW.RequireAdmin).Get("/", adminH.Dashboard)
 		r.With(authMW.RequireAdmin).Get("/events/new", adminH.NewEventForm)
 		r.With(authMW.RequireAdmin).Post("/events", adminH.CreateEvent)
-		r.With(authMW.RequireAdmin).Get("/events/{id}/edit", adminH.EditEventForm)
-		r.With(authMW.RequireAdmin).Post("/events/{id}", adminH.UpdateEvent)
-		r.With(authMW.RequireAdmin).Post("/events/{id}/toggle", adminH.ToggleEvent)
-		r.With(authMW.RequireAdmin).Post("/events/{id}/clear", adminH.ClearEvent)
-		r.With(authMW.RequireAdmin).Get("/events/{id}/export", adminH.ExportCSV)
+		r.With(authMW.RequireAdmin).Get("/events/{date}/edit", adminH.EditEventForm)
+		r.With(authMW.RequireAdmin).Post("/events/{date}", adminH.UpdateEvent)
+		r.With(authMW.RequireAdmin).Post("/events/{date}/toggle", adminH.ToggleEvent)
+		r.With(authMW.RequireAdmin).Post("/events/{date}/clear", adminH.ClearEvent)
+		r.With(authMW.RequireAdmin).Get("/events/{date}/export", adminH.ExportCSV)
+		r.With(authMW.RequireAdmin).Get("/events/{date}", adminH.EventDetail)
 	})
 
 	addr := fmt.Sprintf(":%s", cfg.Port)

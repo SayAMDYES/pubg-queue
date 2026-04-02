@@ -19,13 +19,14 @@
   <div class="calendar-day{{ if .Past }} past{{ end }}{{ if .IsToday }} today{{ end }}{{ if .HasEvent }} has-event{{ end }}{{ if .Full }} full{{ end }}">
     <span class="day-num">{{ .Day }}</span>
     {{ if .HasEvent }}
-    <a href="/events/{{ .EventID }}" class="event-link">
+    <a href="/date/{{ .Date }}" class="event-link">
       {{ if .Open }}
         {{ if .Full }}<span class="badge badge-full">满员</span>{{ else }}<span class="badge badge-open">报名中</span>{{ end }}
       {{ else }}
         <span class="badge badge-closed">已关闭</span>
       {{ end }}
       <small>{{ .Registered }}/{{ .Capacity }}</small>
+      {{ if .StartTime }}<span class="event-time">{{ .StartTime }}</span>{{ end }}
     </a>
     {{ end }}
   </div>

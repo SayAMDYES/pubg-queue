@@ -49,14 +49,19 @@ func TestAssignSlot_Normal(t *testing.T) {
 	db := setupTestDB(t)
 	eventID := createEvent(t, db, 1)
 
-	names := []string{"Alice", "Bob", "Charlie", "Diana"}
-	for _, name := range names {
-		_, status, _, err := service.RegisterUserWithToken(db, eventID, name, true)
+	players := []struct{ name, phone string }{
+		{"Alice", "13800000001"},
+		{"Bob", "13800000002"},
+		{"Charlie", "13800000003"},
+		{"Diana", "13800000004"},
+	}
+	for _, p := range players {
+		_, status, _, err := service.RegisterUserWithToken(db, eventID, p.name, p.phone, true)
 		if err != nil {
-			t.Fatalf("register %s: %v", name, err)
+			t.Fatalf("register %s: %v", p.name, err)
 		}
 		if status != "assigned" {
-			t.Errorf("expected assigned for %s, got %s", name, status)
+			t.Errorf("expected assigned for %s, got %s", p.name, status)
 		}
 	}
 
@@ -73,13 +78,14 @@ func TestAssignSlot_Full(t *testing.T) {
 
 	for i := 0; i < 4; i++ {
 		name := []string{"P1", "P2", "P3", "P4"}[i]
-		_, _, _, err := service.RegisterUserWithToken(db, eventID, name, true)
+		phone := fmt.Sprintf("1380000000%d", i+1)
+		_, _, _, err := service.RegisterUserWithToken(db, eventID, name, phone, true)
 		if err != nil {
 			t.Fatalf("register: %v", err)
 		}
 	}
 
-	_, status, _, err := service.RegisterUserWithToken(db, eventID, "P5", true)
+	_, status, _, err := service.RegisterUserWithToken(db, eventID, "P5", "13800000005", true)
 	if err != nil {
 		t.Fatalf("register P5: %v", err)
 	}
@@ -95,7 +101,8 @@ func TestLeaveAndPromote(t *testing.T) {
 	var firstTokenHash string
 	for i := 0; i < 4; i++ {
 		name := []string{"P1", "P2", "P3", "P4"}[i]
-		_, _, _, err := service.RegisterUserWithToken(db, eventID, name, true)
+		phone := fmt.Sprintf("1380000000%d", i+1)
+		_, _, _, err := service.RegisterUserWithToken(db, eventID, name, phone, true)
 		if err != nil {
 			t.Fatalf("register %s: %v", name, err)
 		}
@@ -104,7 +111,7 @@ func TestLeaveAndPromote(t *testing.T) {
 		}
 	}
 
-	_, _, _, err := service.RegisterUserWithToken(db, eventID, "P5", true)
+	_, _, _, err := service.RegisterUserWithToken(db, eventID, "P5", "13800000005", true)
 	if err != nil {
 		t.Fatalf("register P5: %v", err)
 	}
@@ -143,7 +150,8 @@ func TestConcurrentRegister(t *testing.T) {
 				"C1", "C2", "C3", "C4", "C5",
 				"D1", "D2", "D3", "D4", "D5",
 			}[i]
-			service.RegisterUserWithToken(db, eventID, name, true)
+			phone := fmt.Sprintf("138%08d", i+1)
+			service.RegisterUserWithToken(db, eventID, name, phone, true)
 		}(i)
 	}
 	wg.Wait()
@@ -155,15 +163,59 @@ func TestConcurrentRegister(t *testing.T) {
 	}
 }
 
+func TestPhoneUniqueness(t *testing.T) {
+	db := setupTestDB(t)
+	eventID := createEvent(t, db, 2)
+
+	// 第一次报名成功
+	_, _, _, err := service.RegisterUserWithToken(db, eventID, "Alice", "13800000001", true)
+	if err != nil {
+		t.Fatalf("first register: %v", err)
+	}
+
+	// 同一手机号再次报名应该失败
+	_, _, _, err = service.RegisterUserWithToken(db, eventID, "AliceDup", "13800000001", true)
+	if err == nil {
+		t.Error("expected error for duplicate phone, got nil")
+	}
+}
+
 func TestTokenHash(t *testing.T) {
 	plain, hash, salt, err := service.GenerateLeaveToken()
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
+	// 6位数字码
+	if len(plain) != 6 {
+		t.Errorf("expected 6-digit token, got %q (len=%d)", plain, len(plain))
+	}
+	for _, c := range plain {
+		if c < '0' || c > '9' {
+			t.Errorf("token contains non-digit character: %q", plain)
+		}
+	}
 	if !service.VerifyToken(plain, hash, salt) {
 		t.Error("VerifyToken failed for valid token")
 	}
-	if service.VerifyToken("wrongtoken", hash, salt) {
+	if service.VerifyToken("999999", hash, salt) && plain != "999999" {
 		t.Error("VerifyToken should fail for wrong token")
+	}
+}
+
+func TestMaskPhone(t *testing.T) {
+	cases := []struct {
+		input    string
+		expected string
+	}{
+		{"13800005678", "138****5678"},
+		{"15912345678", "159****5678"},
+		{"", ""},
+		{"123", "123"},
+	}
+	for _, c := range cases {
+		got := service.MaskPhone(c.input)
+		if got != c.expected {
+			t.Errorf("MaskPhone(%q) = %q, want %q", c.input, got, c.expected)
+		}
 	}
 }

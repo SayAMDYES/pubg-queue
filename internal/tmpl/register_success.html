@@ -15,20 +15,23 @@
 </header>
 <main class="container">
 <div class="success-box">
-  <h2>&#10003; 报名成功！</h2>
-  <p>欢迎，<strong>{{ .Name }}</strong>！</p>
+  <h2>✓ 报名成功！</h2>
+  <p>报名人：<strong>{{ .Name }}</strong>（{{ .MaskedPhone }}）</p>
   {{ if eq .Status "assigned" }}
-  <p>您已成功获得队伍席位。</p>
+  <p>🎮 您已成功获得队伍席位。</p>
   {{ else }}
-  <p>您已加入<strong>候补名单</strong>，如有席位将自动晋升。</p>
+  <p>⏳ 您已加入<strong>候补名单</strong>，如有席位将自动晋升。</p>
   {{ end }}
 
   <div class="token-box">
-    <h3>&#128273; 离队令牌（请妥善保存！）</h3>
-    <p class="warning">此令牌只显示一次，请截图或复制保存！</p>
-    <code class="token">{{ .LeaveToken }}</code>
-    <p>如需离队，请在离队页面输入此令牌。</p>
+    <h3>🔑 你的离队码（请牢记！）</h3>
+    <p class="warning">⚠ 请牢记此6位离队码，离开时凭此码退出报名。此码仅显示一次。</p>
+    <span class="token-code" aria-label="六位离队码：{{ .LeaveToken }}">{{ .LeaveToken }}</span>
+    <p style="font-size:0.82rem;color:var(--color-text-muted);margin-top:0.5rem">在活动详情页底部输入离队码即可退出报名</p>
   </div>
+
+  <a href="/date/{{ .EventDate }}" class="btn btn-secondary">返回活动页</a>
+  <a href="/" class="btn btn-secondary ml-sm">返回首页</a>
 </div>
 </main>
 <footer class="site-footer">

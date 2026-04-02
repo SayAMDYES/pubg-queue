@@ -25,10 +25,12 @@
   <h2>活动管理</h2>
   <a href="/admin/events/new" class="btn btn-primary">+ 新建活动</a>
 </div>
+<div class="table-wrap">
 <table class="admin-table">
   <thead>
     <tr>
       <th>日期</th>
+      <th>时间</th>
       <th>状态</th>
       <th>队伍数</th>
       <th>已报名</th>
@@ -39,29 +41,32 @@
   <tbody>
   {{ range .Events }}
   <tr>
-    <td><a href="/events/{{ .ID }}">{{ .EventDate }}</a></td>
+    <td><a href="/admin/events/{{ .EventDate }}">{{ .EventDate }}</a></td>
+    <td>{{ if .StartTime }}{{ .StartTime }}{{ if .EndTime }}-{{ .EndTime }}{{ end }}{{ else }}-{{ end }}</td>
     <td>{{ if .Open }}<span class="badge badge-open">开放</span>{{ else }}<span class="badge badge-closed">关闭</span>{{ end }}</td>
     <td>{{ .TeamCount }}</td>
     <td>{{ .RegisteredCount }} / {{ mul .TeamCount 4 }}</td>
     <td>{{ .WaitlistCount }}</td>
     <td class="actions">
-      <a href="/admin/events/{{ .ID }}/edit" class="btn btn-small">编辑</a>
-      <form method="POST" action="/admin/events/{{ .ID }}/toggle" style="display:inline">
+      <a href="/admin/events/{{ .EventDate }}/edit" class="btn btn-small">编辑</a>
+      <form method="POST" action="/admin/events/{{ .EventDate }}/toggle" style="display:inline">
         <input type="hidden" name="gorilla.csrf.Token" value="{{ $.CSRFToken }}">
         <button type="submit" class="btn btn-small btn-secondary">{{ if .Open }}关闭{{ else }}开放{{ end }}</button>
       </form>
-      <form method="POST" action="/admin/events/{{ .ID }}/clear" style="display:inline" onsubmit="return confirm('确认清空所有报名？')">
+      <form method="POST" action="/admin/events/{{ .EventDate }}/clear" style="display:inline" onsubmit="return confirm('确认清空所有报名？')">
         <input type="hidden" name="gorilla.csrf.Token" value="{{ $.CSRFToken }}">
         <button type="submit" class="btn btn-small btn-danger">清空</button>
       </form>
-      <a href="/admin/events/{{ .ID }}/export" class="btn btn-small btn-secondary">导出CSV</a>
+      <a href="/admin/events/{{ .EventDate }}/export" class="btn btn-small btn-secondary">导出CSV</a>
+      <a href="/date/{{ .EventDate }}" class="btn btn-small btn-secondary" target="_blank">预览</a>
     </td>
   </tr>
   {{ else }}
-  <tr><td colspan="6" class="empty-msg">暂无活动，请新建</td></tr>
+  <tr><td colspan="7" class="empty-msg">暂无活动，请新建</td></tr>
   {{ end }}
   </tbody>
 </table>
+</div>
 </main>
 </body>
 </html>
