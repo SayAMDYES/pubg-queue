@@ -37,15 +37,28 @@
   </div>
 </div>
 
+{{ if eq .Msg "ranking_refresh_started" }}
+<div class="alert alert-warning" style="margin-bottom:1rem">⏳ 战绩刷新已在后台启动，请稍候片刻后刷新页面查看结果。</div>
+{{ end }}
+
 <div class="event-meta" style="margin-bottom:1.5rem">
   {{ if and .Event.StartTime .Event.EndTime }}
   <span class="event-meta-item">🕐 <strong>{{ .Event.StartTime }} – {{ .Event.EndTime }}</strong></span>
   {{ else if .Event.StartTime }}
   <span class="event-meta-item">🕐 <strong>{{ .Event.StartTime }}</strong> 开始</span>
   {{ end }}
+  {{ if and .Event.ActualStart .Event.ActualEnd }}
+  <span class="event-meta-item">⚔️ 实战：<strong>{{ .Event.ActualStart }} – {{ .Event.ActualEnd }}</strong></span>
+  {{ end }}
   <span class="event-meta-item">状态：{{ if .Event.Open }}<span class="badge badge-open">开放</span>{{ else }}<span class="badge badge-closed">关闭</span>{{ end }}</span>
   {{ if .Event.Note }}<span class="event-note">📝 {{ .Event.Note }}</span>{{ end }}
 </div>
+
+{{ if .PUBGEnabled }}
+{{ if not .Event.ActualStart }}
+<div class="alert alert-warning" style="margin-bottom:1rem">⚠ 未设置实际开战时间，刷新战绩将使用赛季总数据。建议在<a href="/admin/events/{{ .Event.EventDate }}/edit" style="color:var(--amber)">编辑活动</a>中填写实际开战/结束时间以获得更准确的统计。</div>
+{{ end }}
+{{ end }}
 
 {{ if .Rankings }}
 <h3 style="margin-bottom:0.75rem;color:var(--gold)">🏆 战绩排名</h3>
@@ -57,9 +70,10 @@
       <th>游戏名称</th>
       <th>场次</th>
       <th>击杀</th>
+      <th>死亡</th>
       <th>助攻</th>
+      <th>KD/A</th>
       <th>场均伤害</th>
-      <th>评分</th>
       <th>称号</th>
     </tr>
   </thead>
@@ -70,12 +84,17 @@
     <td style="font-weight:600">{{ .GameName }}</td>
     <td class="text-sm text-muted">{{ .Matches }}</td>
     <td class="text-sm">{{ .Kills }}</td>
+    <td class="text-sm text-muted">{{ .Deaths }}</td>
     <td class="text-sm">{{ .Assists }}</td>
+    <td class="text-sm"><strong>{{ printf "%.2f" .KDA }}</strong></td>
     <td class="text-sm">{{ printf "%.0f" .AvgDamage }}</td>
-    <td class="text-sm">{{ printf "%.1f" .Score }}</td>
     <td>
       {{ if eq .RankLabel "战神" }}<span class="badge badge-open" style="font-size:0.85rem">🔥 战神</span>
+      {{ else if eq .RankLabel "精锐" }}<span class="badge" style="font-size:0.85rem;background:rgba(240,165,0,0.15);color:var(--gold);border:1px solid var(--gold-border)">⚔️ 精锐</span>
+      {{ else if eq .RankLabel "骨干" }}<span class="badge" style="font-size:0.85rem;background:var(--bg-hover);color:var(--text-secondary);border:1px solid var(--border)">🛡️ 骨干</span>
+      {{ else if eq .RankLabel "菜鸟" }}<span class="badge badge-full" style="font-size:0.85rem">🐣 菜鸟</span>
       {{ else if eq .RankLabel "战犯" }}<span class="badge badge-closed" style="font-size:0.85rem;background:var(--red-bg);color:var(--red);border-color:var(--red-border)">💀 战犯</span>
+      {{ else if eq .RankLabel "缺席" }}<span class="badge badge-closed" style="font-size:0.85rem">👻 缺席</span>
       {{ end }}
     </td>
   </tr>
@@ -85,8 +104,8 @@
 </div>
 {{ end }}
 
-<h3 style="margin-bottom:0.75rem">报名名单</h3>
-<div class="table-wrap">
+<h3 style="margin-bottom:0.75rem">📋 报名名单</h3>
+<div class="table-wrap" style="margin-bottom:1.5rem">
 <table class="data-table">
   <thead>
     <tr>
@@ -118,6 +137,58 @@
   </tbody>
 </table>
 </div>
+
+<h3 style="margin-bottom:0.75rem">�� 队伍分组</h3>
+<div class="teams-grid" style="margin-bottom:1.5rem">
+{{ range .Teams }}
+<div class="team-card">
+  <div class="team-title">🎮 第 {{ .TeamNo }} 队</div>
+  <table class="slot-table">
+    <thead>
+      <tr>
+        <th class="slot-th">位置</th>
+        <th class="slot-th">游戏名</th>
+        <th class="slot-th">手机号</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{ range .Slots }}
+    <tr class="slot-tr{{ if .Filled }} filled{{ end }}">
+      <td class="slot-td slot-num">{{ .SlotNo }}</td>
+      {{ if .Filled }}
+        <td class="slot-td slot-name">{{ .Name }}</td>
+        <td class="slot-td slot-phone">{{ .Phone }}</td>
+      {{ else }}
+        <td class="slot-td slot-empty" colspan="2">空位</td>
+      {{ end }}
+    </tr>
+    {{ end }}
+    </tbody>
+  </table>
+</div>
+{{ end }}
+</div>
+
+{{ if .Waitlist }}
+<div class="waitlist-section">
+  <h3>⏳ 候补名单（{{ len .Waitlist }} 人）</h3>
+  <table class="data-table" style="margin-top:0.5rem">
+    <thead>
+      <tr><th>序号</th><th>游戏名</th><th>手机号</th></tr>
+    </thead>
+    <tbody>
+    {{ range $i, $w := .Waitlist }}
+    <tr>
+      <td class="text-sm text-muted">{{ add $i 1 }}</td>
+      <td style="font-weight:600">{{ $w.Name }}</td>
+      <td class="text-sm text-muted"><code>{{ $w.Phone }}</code></td>
+    </tr>
+    {{ end }}
+    </tbody>
+  </table>
+</div>
+{{ end }}
+
 </main>
 <footer class="site-footer">
   <div class="container"><p>趴布鸡排队系统 &copy; 2024</p></div>

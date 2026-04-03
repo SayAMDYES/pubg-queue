@@ -100,6 +100,9 @@ func main() {
 		r.With(authMW.RequireAdmin).Post("/events/{date}/refresh-rankings", adminH.RefreshRankings)
 		r.With(authMW.RequireAdmin).Get("/events/{date}/export", adminH.ExportCSV)
 		r.With(authMW.RequireAdmin).Get("/events/{date}", adminH.EventDetail)
+		r.With(authMW.RequireAdmin).Get("/users", adminH.ListUsers)
+		r.With(authMW.RequireAdmin).Get("/users/{id}/edit", adminH.EditUserForm)
+		r.With(authMW.RequireAdmin).Post("/users/{id}", adminH.UpdateUser)
 	})
 
 	addr := fmt.Sprintf(":%s", cfg.Port)

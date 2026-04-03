@@ -1,0 +1,63 @@
+{{ define "admin_users.html" }}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ .Title }} - 趴布鸡排队</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a href="/" class="logo"><span class="logo-icon">🐔</span> 趴布鸡排队</a>
+    <nav>
+      <a href="/admin" class="nav-link">后台</a>
+      <a href="/admin/users" class="nav-link active">账号管理</a>
+    </nav>
+  </div>
+</header>
+<main class="container">
+<div class="admin-bar">
+  <h2>👤 账号管理</h2>
+</div>
+<div class="table-wrap">
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>手机号</th>
+      <th>历史游戏名</th>
+      <th>报名次数</th>
+      <th>注册时间</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody>
+  {{ range .Users }}
+  <tr>
+    <td class="text-sm text-muted">{{ .ID }}</td>
+    <td><code style="font-size:0.88rem">{{ .Phone }}</code></td>
+    <td>
+      {{ range $i, $gn := .GameNames }}{{ if $i }}<span style="color:var(--border-strong)">·</span> {{ end }}<span style="font-size:0.85rem">{{ $gn }}</span>{{ end }}
+      {{ if not .GameNames }}<span class="text-muted text-sm">—</span>{{ end }}
+    </td>
+    <td class="text-sm">{{ .RegCount }}</td>
+    <td class="text-sm text-muted">{{ .CreatedAt }}</td>
+    <td class="actions-cell">
+      <a href="/admin/users/{{ .ID }}/edit" class="btn btn-outline btn-sm">编辑</a>
+    </td>
+  </tr>
+  {{ else }}
+  <tr><td colspan="6" class="empty-state">暂无注册用户</td></tr>
+  {{ end }}
+  </tbody>
+</table>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="container"><p>趴布鸡排队系统 &copy; 2024</p></div>
+</footer>
+</body>
+</html>
+{{ end }}

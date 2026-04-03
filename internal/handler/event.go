@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"time"
 
@@ -23,9 +24,11 @@ func getEventByDate(db *sql.DB, date string) (model.Event, error) {
 	var ev model.Event
 	var openInt int
 	err := db.QueryRow(
-		`SELECT id, event_date, open, team_count, COALESCE(note,''), COALESCE(start_time,''), COALESCE(end_time,'') FROM events WHERE event_date=?`,
+		`SELECT id, event_date, open, team_count, COALESCE(note,''), COALESCE(start_time,''), COALESCE(end_time,''),
+		 COALESCE(actual_start,''), COALESCE(actual_end,'') FROM events WHERE event_date=?`,
 		date,
-	).Scan(&ev.ID, &ev.EventDate, &openInt, &ev.TeamCount, &ev.Note, &ev.StartTime, &ev.EndTime)
+	).Scan(&ev.ID, &ev.EventDate, &openInt, &ev.TeamCount, &ev.Note,
+		&ev.StartTime, &ev.EndTime, &ev.ActualStart, &ev.ActualEnd)
 	if err != nil {
 		return ev, err
 	}
@@ -67,6 +70,7 @@ func EventDetailHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
 			Name   string
 			Phone  string // 已脱敏
 			Filled bool
+			Stats  *service.CachedPlayerStats // nil 表示未查询/未启用
 		}
 
 		capacity := ev.TeamCount * 4
@@ -121,16 +125,38 @@ func EventDetailHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
 			gameNames, _ = service.GetUserGameNames(db, userID)
 		}
 
+		// 若 PUBG API 已配置，加载已缓存的玩家战绩
+		pubgEnabled := cfg.PUBGAPIKey != ""
+		if pubgEnabled {
+			for i := range slots {
+				if slots[i].Filled {
+					slots[i].Stats = service.GetCachedPlayerStats(db, slots[i].Name)
+				}
+			}
+		}
+
+		// 统计已报名人数（用于邀请文案）
+		registeredCount := 0
+		for _, s := range slots {
+			if s.Filled {
+				registeredCount++
+			}
+		}
+		// capacity is already declared above
+
 		data := map[string]interface{}{
-			"Title":        ev.EventDate + " 活动",
-			"Event":        ev,
-			"Teams":        teams,
-			"Waitlist":     waitlist,
-			"CSRFToken":    csrf.Token(r),
-			"ErrMsg":       r.URL.Query().Get("err"),
-			"UserPhone":    userPhone,
-			"UserLoggedIn": userID > 0,
-			"GameNames":    gameNames,
+			"Title":           ev.EventDate + " 活动",
+			"Event":           ev,
+			"Teams":           teams,
+			"Waitlist":        waitlist,
+			"CSRFToken":       csrf.Token(r),
+			"ErrMsg":          r.URL.Query().Get("err"),
+			"UserPhone":       userPhone,
+			"UserLoggedIn":    userID > 0,
+			"GameNames":       gameNames,
+			"PUBGEnabled":     pubgEnabled,
+			"RegisteredCount": registeredCount,
+			"Capacity":        capacity,
 		}
 
 		if err := tmpl.Render(w, "event_detail.html", data); err != nil {
@@ -204,6 +230,19 @@ func RegisterHandler(db *sql.DB, cfg *config.Config, bans interface{ IsBanned(st
 
 		// 记录游戏昵称历史
 		service.UpsertGameName(db, userID, name)
+
+		// 若 PUBG API 已配置，异步缓存该玩家的赛季战绩
+		if cfg.PUBGAPIKey != "" {
+			client := service.NewPUBGClient(cfg.PUBGAPIKey, cfg.PUBGShard)
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[PUBG] CachePlayerSeasonStats panic for %s: %v", name, r)
+					}
+				}()
+				service.CachePlayerSeasonStats(db, client, name)
+			}()
+		}
 
 		data := map[string]interface{}{
 			"Title":       "报名成功",

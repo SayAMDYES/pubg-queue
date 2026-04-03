@@ -34,6 +34,75 @@
              {{ if .Event }}value="{{ .Event.TeamCount }}"{{ else }}value="2"{{ end }}>
     </div>
     <div class="form-group">
+      <label class="form-label">预计开始时间（可选，仅展示用）</label>
+      <input type="time" name="start_time"
+             {{ if .Event }}value="{{ .Event.StartTime }}"{{ end }}>
+    </div>
+    <div class="form-group">
+      <label class="form-label">预计结束时间（可选，仅展示用）</label>
+      <input type="time" name="end_time"
+             {{ if .Event }}value="{{ .Event.EndTime }}"{{ end }}>
+    </div>
+    <div class="form-group">
+      <label class="form-label">实际开战时间（可选，用于战绩查询）</label>
+      <input type="datetime-local" name="actual_start"
+             {{ if .Event }}value="{{ .Event.ActualStart }}"{{ end }}>
+      <div class="form-hint">设置后刷新战绩将只统计此时间段内的场次</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">实际结束时间（可选，用于战绩查询）</label>
+      <input type="datetime-local" name="actual_end"
+             {{ if .Event }}value="{{ .Event.ActualEnd }}"{{ end }}>
+    </div>
+    <div class="form-group">
+      <label class="form-label">备注（可选）</label>
+      <textarea name="note" rows="3">{{ if .Event }}{{ .Event.Note }}{{ end }}</textarea>
+    </div>
+    <div class="gap-sm mt-2">
+      <button type="submit" class="btn btn-primary">保存</button>
+      <a href="/admin" class="btn btn-secondary">取消</a>
+    </div>
+  </form>
+</div>
+</main>
+</body>
+</html>
+{{ end }}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ .Title }} - 趴布鸡排队</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a href="/" class="logo"><span class="logo-icon">🐔</span> 趴布鸡排队</a>
+    <nav><a href="/admin" class="nav-link">← 返回后台</a></nav>
+  </div>
+</header>
+<main class="container">
+<div style="max-width:var(--form-width)">
+  <h2 style="margin-bottom:1.5rem">{{ .Title }}</h2>
+  {{ if .Event }}
+  <form method="POST" action="/admin/events/{{ .Event.EventDate }}">
+  {{ else }}
+  <form method="POST" action="/admin/events">
+  {{ end }}
+    <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+    <div class="form-group">
+      <label class="form-label">活动日期</label>
+      <input type="date" name="event_date" required
+             {{ if .Event }}value="{{ .Event.EventDate }}"{{ end }}>
+    </div>
+    <div class="form-group">
+      <label class="form-label">队伍数量</label>
+      <input type="number" name="team_count" min="1" max="10" required
+             {{ if .Event }}value="{{ .Event.TeamCount }}"{{ else }}value="2"{{ end }}>
+    </div>
+    <div class="form-group">
       <label class="form-label">开始时间（可选）</label>
       <input type="time" name="start_time"
              {{ if .Event }}value="{{ .Event.StartTime }}"{{ end }}>
