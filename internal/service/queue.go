@@ -61,7 +61,9 @@ func VerifyToken(plaintext, hash, _ string) bool {
 	return subtle.ConstantTimeCompare([]byte(expected), []byte(hash)) == 1
 }
 
-func RegisterUserWithToken(db *sql.DB, eventID int64, name, phone string, allowDup bool) (regID int64, status, plainToken string, err error) {
+// Register 向活动报名，userID=0 表示匿名（旧兼容模式）。
+// 返回 (regID, status, plainToken, err)。
+func Register(db *sql.DB, eventID, userID int64, name, phone string, allowDup bool) (regID int64, status, plainToken string, err error) {
 	if !ValidateName(name) {
 		return 0, "", "", fmt.Errorf("invalid_name")
 	}
@@ -98,6 +100,17 @@ func RegisterUserWithToken(db *sql.DB, eventID int64, name, phone string, allowD
 		return 0, "", "", fmt.Errorf("phone_already_registered")
 	}
 
+	// 用户ID唯一性检测（同一活动同一账号只能报名一次）
+	if userID > 0 {
+		var userCnt int
+		if err = tx.QueryRow(`SELECT COUNT(*) FROM registrations WHERE event_id=? AND user_id=? AND status != 'cancelled'`, eventID, userID).Scan(&userCnt); err != nil {
+			return 0, "", "", fmt.Errorf("check user dup: %w", err)
+		}
+		if userCnt > 0 {
+			return 0, "", "", fmt.Errorf("phone_already_registered")
+		}
+	}
+
 	if !allowDup {
 		var cnt int
 		if err = tx.QueryRow(`SELECT COUNT(*) FROM registrations WHERE event_id=? AND name=? AND status != 'cancelled'`, eventID, name).Scan(&cnt); err != nil {
@@ -115,18 +128,24 @@ func RegisterUserWithToken(db *sql.DB, eventID int64, name, phone string, allowD
 
 	capacity := teamCount * slotsPerTeam
 
-	var tokenHash, tokenSalt string
-	plainToken, tokenHash, tokenSalt, err = GenerateLeaveToken()
+	var tokenHashVal, tokenSalt string
+	plainToken, tokenHashVal, tokenSalt, err = GenerateLeaveToken()
 	if err != nil {
 		return 0, "", "", fmt.Errorf("generate token: %w", err)
+	}
+
+	// userIDArg: nil for anonymous, non-nil for linked user
+	var userIDArg interface{}
+	if userID > 0 {
+		userIDArg = userID
 	}
 
 	if assignedCount < capacity {
 		teamNo, slotNo := findNextSlot(tx, eventID, teamCount)
 		var res sql.Result
 		res, err = tx.Exec(
-			`INSERT INTO registrations (event_id, name, phone, status, team_no, slot_no, leave_token_hash, leave_token_salt) VALUES (?,?,?,?,?,?,?,?)`,
-			eventID, name, phone, "assigned", teamNo, slotNo, tokenHash, tokenSalt,
+			`INSERT INTO registrations (event_id, user_id, name, phone, status, team_no, slot_no, leave_token_hash, leave_token_salt) VALUES (?,?,?,?,?,?,?,?,?)`,
+			eventID, userIDArg, name, phone, "assigned", teamNo, slotNo, tokenHashVal, tokenSalt,
 		)
 		if err != nil {
 			return 0, "", "", fmt.Errorf("insert assigned: %w", err)
@@ -136,8 +155,8 @@ func RegisterUserWithToken(db *sql.DB, eventID int64, name, phone string, allowD
 	} else {
 		var res sql.Result
 		res, err = tx.Exec(
-			`INSERT INTO registrations (event_id, name, phone, status, team_no, slot_no, leave_token_hash, leave_token_salt) VALUES (?,?,?,?,NULL,NULL,?,?)`,
-			eventID, name, phone, "waitlist", tokenHash, tokenSalt,
+			`INSERT INTO registrations (event_id, user_id, name, phone, status, team_no, slot_no, leave_token_hash, leave_token_salt) VALUES (?,?,?,?,?,NULL,NULL,?,?)`,
+			eventID, userIDArg, name, phone, "waitlist", tokenHashVal, tokenSalt,
 		)
 		if err != nil {
 			return 0, "", "", fmt.Errorf("insert waitlist: %w", err)
@@ -150,6 +169,11 @@ func RegisterUserWithToken(db *sql.DB, eventID int64, name, phone string, allowD
 		return 0, "", "", fmt.Errorf("commit: %w", err)
 	}
 	return regID, status, plainToken, nil
+}
+
+// RegisterUserWithToken 向后兼容包装（匿名报名，无 userID 关联）。
+func RegisterUserWithToken(db *sql.DB, eventID int64, name, phone string, allowDup bool) (regID int64, status, plainToken string, err error) {
+	return Register(db, eventID, 0, name, phone, allowDup)
 }
 
 func findNextSlot(tx *sql.Tx, eventID int64, teamCount int) (teamNo, slotNo int) {
@@ -193,11 +217,74 @@ func LeaveAndPromote(db *sql.DB, tokenHash string) (leftName string, promotedNam
 		return "", "", fmt.Errorf("find reg: %w", err)
 	}
 
+	promotedName, err = cancelAndPromote(tx, regID, eventID, status, teamNo, slotNo)
+	if err != nil {
+		return "", "", err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return "", "", fmt.Errorf("commit: %w", err)
+	}
+	return leftName, promotedName, nil
+}
+
+// LeaveByUser 通过用户账号（userID 或 phone）在指定活动中离队并提升候补。
+// userID > 0 时优先按 user_id 查找，否则按 phone 查找（兼容旧数据）。
+func LeaveByUser(db *sql.DB, eventID, userID int64, phone string) (leftName string, promotedName string, err error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return "", "", fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	var regID int64
+	var teamNo, slotNo sql.NullInt64
+	var status string
+
+	// 优先按 user_id 查，其次按 phone 查（旧数据兼容）
+	var row *sql.Row
+	if userID > 0 {
+		row = tx.QueryRow(
+			`SELECT id, name, status, team_no, slot_no FROM registrations
+			 WHERE event_id=? AND user_id=? AND status != 'cancelled'`,
+			eventID, userID,
+		)
+	} else {
+		row = tx.QueryRow(
+			`SELECT id, name, status, team_no, slot_no FROM registrations
+			 WHERE event_id=? AND phone=? AND user_id IS NULL AND status != 'cancelled'`,
+			eventID, phone,
+		)
+	}
+	if err = row.Scan(&regID, &leftName, &status, &teamNo, &slotNo); err != nil {
+		if err == sql.ErrNoRows {
+			return "", "", fmt.Errorf("registration_not_found")
+		}
+		return "", "", fmt.Errorf("find reg: %w", err)
+	}
+
+	promotedName, err = cancelAndPromote(tx, regID, eventID, status, teamNo, slotNo)
+	if err != nil {
+		return "", "", err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return "", "", fmt.Errorf("commit: %w", err)
+	}
+	return leftName, promotedName, nil
+}
+
+// cancelAndPromote 取消报名并提升候补（在事务中执行）。
+func cancelAndPromote(tx *sql.Tx, regID, eventID int64, status string, teamNo, slotNo sql.NullInt64) (promotedName string, err error) {
 	if _, err = tx.Exec(
 		`UPDATE registrations SET status='cancelled', cancelled_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`,
 		regID,
 	); err != nil {
-		return "", "", fmt.Errorf("cancel reg: %w", err)
+		return "", fmt.Errorf("cancel reg: %w", err)
 	}
 
 	if status == "assigned" && teamNo.Valid && slotNo.Valid {
@@ -213,14 +300,10 @@ func LeaveAndPromote(db *sql.DB, tokenHash string) (leftName string, promotedNam
 				`UPDATE registrations SET status='assigned', team_no=?, slot_no=? WHERE id=?`,
 				teamNo.Int64, slotNo.Int64, waitID,
 			); err != nil {
-				return "", "", fmt.Errorf("promote waitlist: %w", err)
+				return "", fmt.Errorf("promote waitlist: %w", err)
 			}
 			promotedName = waitName
 		}
 	}
-
-	if err = tx.Commit(); err != nil {
-		return "", "", fmt.Errorf("commit: %w", err)
-	}
-	return leftName, promotedName, nil
+	return promotedName, nil
 }

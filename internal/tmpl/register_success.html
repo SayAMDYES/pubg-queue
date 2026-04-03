@@ -10,28 +10,27 @@
 <body>
 <header class="site-header">
   <div class="container">
-    <a href="/" class="logo">🐔 趴布鸡排队</a>
+    <a href="/" class="logo"><span class="logo-icon">🐔</span> 趴布鸡排队</a>
   </div>
 </header>
 <main class="container">
-<div class="success-box">
-  <h2>✓ 报名成功！</h2>
-  <p>报名人：<strong>{{ .Name }}</strong>（{{ .MaskedPhone }}）</p>
+<div class="result-box">
+  <h2>✓ 报名成功</h2>
+  <p><strong>{{ .Name }}</strong>（{{ .MaskedPhone }}）</p>
   {{ if eq .Status "assigned" }}
-  <p>🎮 您已成功获得队伍席位。</p>
+  <p class="text-gold" style="font-size:1rem;font-weight:600">🎮 已获得队伍席位</p>
   {{ else }}
-  <p>⏳ 您已加入<strong>候补名单</strong>，如有席位将自动晋升。</p>
+  <p style="color:var(--amber);font-size:1rem;font-weight:600">⏳ 已加入候补名单，有席位将自动晋升</p>
   {{ end }}
 
-  <div class="token-box">
-    <h3>🔑 你的离队码（请牢记！）</h3>
-    <p class="warning">⚠ 请牢记此6位离队码，离开时凭此码退出报名。此码仅显示一次。</p>
-    <span class="token-code" aria-label="六位离队码：{{ .LeaveToken }}">{{ .LeaveToken }}</span>
-    <p style="font-size:0.82rem;color:var(--color-text-muted);margin-top:0.5rem">在活动详情页底部输入离队码即可退出报名</p>
+  <div class="alert alert-warning" style="text-align:left;margin-top:1.5rem">
+    <strong>离队方式：</strong>前往活动页面，在"离队"区域输入手机号和密码即可退出报名。
   </div>
 
-  <a href="/date/{{ .EventDate }}" class="btn btn-secondary">返回活动页</a>
-  <a href="/" class="btn btn-secondary ml-sm">返回首页</a>
+  <div class="btn-group">
+    <a href="/date/{{ .EventDate }}" class="btn btn-primary">返回活动页</a>
+    <a href="/" class="btn btn-secondary">返回首页</a>
+  </div>
 </div>
 </main>
 <footer class="site-footer">

@@ -14,8 +14,79 @@ import (
 )
 
 type sessionData struct {
-	AdminUser string `json:"admin_user"`
+	AdminUser string `json:"admin_user,omitempty"`
+	UserID    int64  `json:"user_id,omitempty"`
+	UserPhone string `json:"user_phone,omitempty"`
 }
+
+// ─── Ban Manager ──────────────────────────────────────────────────────────────
+
+const (
+	banMaxFails   = 5
+	banDuration   = 24 * time.Hour
+	banWindowMins = 10 // 窗口内达到 banMaxFails 则封禁
+)
+
+// BanManager 基于数据库的 IP/手机号封禁管理器（持久化，重启后仍有效）。
+type BanManager struct {
+	db  *sql.DB
+	mu  sync.Mutex
+}
+
+func NewBanManager(db *sql.DB) *BanManager {
+	return &BanManager{db: db}
+}
+
+// IsBanned 检查某个 key（IP 或手机号）是否处于封禁状态。
+func (b *BanManager) IsBanned(key string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var bannedUntil sql.NullString
+	err := b.db.QueryRow(`SELECT banned_until FROM login_bans WHERE ban_key=?`, key).Scan(&bannedUntil)
+	if err != nil || !bannedUntil.Valid || bannedUntil.String == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, bannedUntil.String)
+	if err != nil {
+		return false
+	}
+	if time.Now().After(t) {
+		// 封禁已过期，清除
+		b.db.Exec(`UPDATE login_bans SET banned_until=NULL, fail_count=0 WHERE ban_key=?`, key)
+		return false
+	}
+	return true
+}
+
+// RecordFailure 记录一次登录失败。失败次数达到阈值则封禁 banDuration。
+func (b *BanManager) RecordFailure(key string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now().Format(time.RFC3339)
+	b.db.Exec(`
+		INSERT INTO login_bans (ban_key, fail_count, last_fail_at)
+		VALUES (?, 1, ?)
+		ON CONFLICT(ban_key) DO UPDATE SET
+			fail_count   = fail_count + 1,
+			last_fail_at = ?
+	`, key, now, now)
+
+	var failCount int
+	b.db.QueryRow(`SELECT fail_count FROM login_bans WHERE ban_key=?`, key).Scan(&failCount)
+	if failCount >= banMaxFails {
+		bannedUntil := time.Now().Add(banDuration).Format(time.RFC3339)
+		b.db.Exec(`UPDATE login_bans SET banned_until=?, fail_count=0 WHERE ban_key=?`, bannedUntil, key)
+	}
+}
+
+// ClearFailures 清除某个 key 的失败记录（登录成功时调用）。
+func (b *BanManager) ClearFailures(key string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.db.Exec(`UPDATE login_bans SET fail_count=0, banned_until=NULL WHERE ban_key=?`, key)
+}
+
+// ─── Legacy in-memory ban (kept for admin brute-force, now delegates to BanManager) ─
 
 type loginAttempt struct {
 	count       int
@@ -26,6 +97,39 @@ var (
 	loginMu       sync.Mutex
 	loginAttempts = map[string]*loginAttempt{}
 )
+
+func isLockedOut(ip string) bool {
+	loginMu.Lock()
+	defer loginMu.Unlock()
+	a, ok := loginAttempts[ip]
+	if !ok {
+		return false
+	}
+	return time.Now().Before(a.lockedUntil)
+}
+
+func recordFailure(ip string) {
+	loginMu.Lock()
+	defer loginMu.Unlock()
+	a, ok := loginAttempts[ip]
+	if !ok {
+		a = &loginAttempt{}
+		loginAttempts[ip] = a
+	}
+	a.count++
+	if a.count >= 5 {
+		a.lockedUntil = time.Now().Add(time.Minute)
+		a.count = 0
+	}
+}
+
+func clearFailures(ip string) {
+	loginMu.Lock()
+	defer loginMu.Unlock()
+	delete(loginAttempts, ip)
+}
+
+// ─── Session helpers ──────────────────────────────────────────────────────────
 
 func generateSessionID() (string, error) {
 	b := make([]byte, 32)
@@ -70,7 +174,7 @@ func saveSession(w http.ResponseWriter, db *sql.DB, cfg *config.Config, data *se
 	if err != nil {
 		return err
 	}
-	expiresAt := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
+	expiresAt := time.Now().Add(7 * 24 * time.Hour).Format(time.RFC3339)
 	if _, err := db.Exec(`INSERT INTO sessions (id, data, expires_at) VALUES (?,?,?)`, sid, string(b), expiresAt); err != nil {
 		return err
 	}
@@ -81,7 +185,7 @@ func saveSession(w http.ResponseWriter, db *sql.DB, cfg *config.Config, data *se
 		HttpOnly: true,
 		Secure:   cfg.SecureCookie,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   86400,
+		MaxAge:   7 * 86400,
 	})
 	return nil
 }
@@ -102,36 +206,21 @@ func deleteSession(w http.ResponseWriter, r *http.Request, db *sql.DB, cfg *conf
 	})
 }
 
-func isLockedOut(ip string) bool {
-	loginMu.Lock()
-	defer loginMu.Unlock()
-	a, ok := loginAttempts[ip]
-	if !ok {
-		return false
+// GetUserSession 获取当前用户 session（非管理员）。
+func GetUserSession(r *http.Request, db *sql.DB, cfg *config.Config) (userID int64, userPhone string) {
+	sess, _, _ := getSession(r, db, cfg)
+	if sess == nil || sess.UserID == 0 {
+		return 0, ""
 	}
-	return time.Now().Before(a.lockedUntil)
+	return sess.UserID, sess.UserPhone
 }
 
-func recordFailure(ip string) {
-	loginMu.Lock()
-	defer loginMu.Unlock()
-	a, ok := loginAttempts[ip]
-	if !ok {
-		a = &loginAttempt{}
-		loginAttempts[ip] = a
-	}
-	a.count++
-	if a.count >= 5 {
-		a.lockedUntil = time.Now().Add(time.Minute)
-		a.count = 0
-	}
+// SaveUserSession 为普通用户保存 session（7天有效）。
+func SaveUserSession(w http.ResponseWriter, db *sql.DB, cfg *config.Config, userID int64, phone string) error {
+	return saveSession(w, db, cfg, &sessionData{UserID: userID, UserPhone: phone})
 }
 
-func clearFailures(ip string) {
-	loginMu.Lock()
-	defer loginMu.Unlock()
-	delete(loginAttempts, ip)
-}
+// ─── Network helpers ──────────────────────────────────────────────────────────
 
 func getClientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
@@ -140,13 +229,16 @@ func getClientIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
+// ─── Admin AuthMiddleware ─────────────────────────────────────────────────────
+
 func NewAuthMiddleware(db *sql.DB, cfg *config.Config) *AuthMiddleware {
-	return &AuthMiddleware{db: db, cfg: cfg}
+	return &AuthMiddleware{db: db, cfg: cfg, bans: NewBanManager(db)}
 }
 
 type AuthMiddleware struct {
-	db  *sql.DB
-	cfg *config.Config
+	db   *sql.DB
+	cfg  *config.Config
+	bans *BanManager
 }
 
 func (a *AuthMiddleware) RequireAdmin(next http.Handler) http.Handler {
@@ -162,6 +254,13 @@ func (a *AuthMiddleware) RequireAdmin(next http.Handler) http.Handler {
 
 func (a *AuthMiddleware) LoginPost(w http.ResponseWriter, r *http.Request) {
 	ip := getClientIP(r)
+
+	// 使用持久化 BanManager 检查 IP
+	if a.bans.IsBanned(ip) {
+		http.Error(w, "登录失败次数过多，请24小时后再试。", http.StatusTooManyRequests)
+		return
+	}
+	// 兼容旧的内存限流
 	if isLockedOut(ip) {
 		http.Error(w, "Too many failed attempts. Please wait 1 minute.", http.StatusTooManyRequests)
 		return
@@ -171,17 +270,20 @@ func (a *AuthMiddleware) LoginPost(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	if username != config.AdminUsername {
+		a.bans.RecordFailure(ip)
 		recordFailure(ip)
 		http.Redirect(w, r, "/admin/login?err=invalid", http.StatusFound)
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(a.cfg.AdminPassHash), []byte(password)); err != nil {
+		a.bans.RecordFailure(ip)
 		recordFailure(ip)
 		http.Redirect(w, r, "/admin/login?err=invalid", http.StatusFound)
 		return
 	}
 
+	a.bans.ClearFailures(ip)
 	clearFailures(ip)
 
 	if err := saveSession(w, a.db, a.cfg, &sessionData{AdminUser: username}); err != nil {
@@ -194,4 +296,9 @@ func (a *AuthMiddleware) LoginPost(w http.ResponseWriter, r *http.Request) {
 func (a *AuthMiddleware) LogoutPost(w http.ResponseWriter, r *http.Request) {
 	deleteSession(w, r, a.db, a.cfg)
 	http.Redirect(w, r, "/admin/login", http.StatusFound)
+}
+
+// GetBanManager 暴露 BanManager 给其他 handler 使用。
+func (a *AuthMiddleware) GetBanManager() *BanManager {
+	return a.bans
 }

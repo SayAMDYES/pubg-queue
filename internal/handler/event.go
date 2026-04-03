@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/SayAMDYES/pubg-queue/internal/config"
+	"github.com/SayAMDYES/pubg-queue/internal/middleware"
 	"github.com/SayAMDYES/pubg-queue/internal/model"
 	"github.com/SayAMDYES/pubg-queue/internal/service"
 	"github.com/SayAMDYES/pubg-queue/internal/tmpl"
@@ -31,7 +33,7 @@ func getEventByDate(db *sql.DB, date string) (model.Event, error) {
 	return ev, nil
 }
 
-func EventDetailHandler(db *sql.DB) http.HandlerFunc {
+func EventDetailHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		date := chi.URLParam(r, "date")
 		if !validateDate(date) {
@@ -112,13 +114,23 @@ func EventDetailHandler(db *sql.DB) http.HandlerFunc {
 			})
 		}
 
+		// 读取用户 session（用于游戏名下拉）
+		userID, userPhone := middleware.GetUserSession(r, db, cfg)
+		var gameNames []string
+		if userID > 0 {
+			gameNames, _ = service.GetUserGameNames(db, userID)
+		}
+
 		data := map[string]interface{}{
-			"Title":     ev.EventDate + " 活动",
-			"Event":     ev,
-			"Teams":     teams,
-			"Waitlist":  waitlist,
-			"CSRFToken": csrf.Token(r),
-			"ErrMsg":    r.URL.Query().Get("err"),
+			"Title":        ev.EventDate + " 活动",
+			"Event":        ev,
+			"Teams":        teams,
+			"Waitlist":     waitlist,
+			"CSRFToken":    csrf.Token(r),
+			"ErrMsg":       r.URL.Query().Get("err"),
+			"UserPhone":    userPhone,
+			"UserLoggedIn": userID > 0,
+			"GameNames":    gameNames,
 		}
 
 		if err := tmpl.Render(w, "event_detail.html", data); err != nil {
@@ -127,7 +139,7 @@ func EventDetailHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func RegisterHandler(db *sql.DB, allowDup bool) http.HandlerFunc {
+func RegisterHandler(db *sql.DB, cfg *config.Config, bans interface{ IsBanned(string) bool; RecordFailure(string); ClearFailures(string) }) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		date := chi.URLParam(r, "date")
 		if !validateDate(date) {
@@ -145,31 +157,57 @@ func RegisterHandler(db *sql.DB, allowDup bool) http.HandlerFunc {
 			return
 		}
 
-		name := r.FormValue("name")
 		phone := r.FormValue("phone")
+		password := r.FormValue("password")
+		name := r.FormValue("name")
 
+		ip := getClientIP(r)
+
+		// 检查 IP 和手机号封禁
+		if bans.IsBanned(ip) || (phone != "" && bans.IsBanned(phone)) {
+			renderError(w, r, http.StatusTooManyRequests, "您的账号或网络已被暂时封禁（24小时），请稍后再试。")
+			return
+		}
+
+		// 手机号+密码认证（或注册）
+		userID, _, authErr := service.GetOrCreateUser(db, phone, password)
+		if authErr != nil {
+			errCode := authErr.Error()
+			if errCode == "wrong_password" {
+				bans.RecordFailure(ip)
+				bans.RecordFailure(phone)
+			}
+			http.Redirect(w, r, "/date/"+date+"?err="+errCode, http.StatusFound)
+			return
+		}
+		// 登录成功，清除失败记录
+		bans.ClearFailures(ip)
+		bans.ClearFailures(phone)
+
+		// 保存用户 session（7天）
+		middleware.SaveUserSession(w, db, cfg, userID, phone)
+
+		// 校验游戏名
 		if !service.ValidateName(name) {
 			http.Redirect(w, r, "/date/"+date+"?err=invalid_name", http.StatusFound)
 			return
 		}
-		if !service.ValidatePhone(phone) {
-			http.Redirect(w, r, "/date/"+date+"?err=invalid_phone", http.StatusFound)
-			return
-		}
 
-		_, status, plainToken, err := service.RegisterUserWithToken(db, ev.ID, name, phone, allowDup)
+		_, status, _, err := service.Register(db, ev.ID, userID, name, phone, cfg.AllowDuplicateName)
 		if err != nil {
 			errCode := err.Error()
 			http.Redirect(w, r, "/date/"+date+"?err="+errCode, http.StatusFound)
 			return
 		}
 
+		// 记录游戏昵称历史
+		service.UpsertGameName(db, userID, name)
+
 		data := map[string]interface{}{
 			"Title":       "报名成功",
 			"Name":        name,
 			"MaskedPhone": service.MaskPhone(phone),
 			"Status":      status,
-			"LeaveToken":  plainToken,
 			"EventDate":   date,
 			"CSRFToken":   csrf.Token(r),
 		}
@@ -178,4 +216,12 @@ func RegisterHandler(db *sql.DB, allowDup bool) http.HandlerFunc {
 			http.Error(w, "template error", http.StatusInternalServerError)
 		}
 	}
+}
+
+// getClientIP 获取客户端真实 IP（处理代理）。
+func getClientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		return xff
+	}
+	return r.RemoteAddr
 }

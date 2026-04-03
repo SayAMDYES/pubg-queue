@@ -53,6 +53,7 @@ func main() {
 	}
 
 	authMW := middleware.NewAuthMiddleware(db, cfg)
+	bans := authMW.GetBanManager()
 
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Logger)
@@ -78,9 +79,11 @@ func main() {
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	r.Get("/", handler.CalendarHandler(db))
-	r.Get("/date/{date}", handler.EventDetailHandler(db))
-	r.With(registerRL.RateLimit).Post("/date/{date}/register", handler.RegisterHandler(db, cfg.AllowDuplicateName))
-	r.With(leaveRL.RateLimit).Post("/leave", handler.LeaveHandler(db))
+	r.Get("/date/{date}", handler.EventDetailHandler(db, cfg))
+	r.With(registerRL.RateLimit).Post("/date/{date}/register", handler.RegisterHandler(db, cfg, bans))
+	r.With(leaveRL.RateLimit).Post("/date/{date}/leave", handler.LeaveHandler(db, cfg, bans))
+	// 向后兼容：旧的6位码离队入口保留
+	r.With(leaveRL.RateLimit).Post("/leave", handler.LegacyLeaveHandler(db))
 
 	adminH := handler.NewAdminHandlers(db, cfg, authMW)
 	r.Route("/admin", func(r chi.Router) {

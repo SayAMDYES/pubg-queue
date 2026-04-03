@@ -26,6 +26,9 @@ func init() {
 		"mul": func(a, b int) int {
 			return a * b
 		},
+		"add": func(a, b int) int {
+			return a + b
+		},
 		"maskPhone": func(phone string) string {
 			return service.MaskPhone(phone)
 		},

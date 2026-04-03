@@ -23,6 +23,7 @@ func Migrate(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS registrations (
 			id               INTEGER PRIMARY KEY AUTOINCREMENT,
 			event_id         INTEGER NOT NULL REFERENCES events(id),
+			user_id          INTEGER REFERENCES users(id),
 			name             TEXT    NOT NULL,
 			phone            TEXT    NOT NULL DEFAULT '',
 			status           TEXT    NOT NULL DEFAULT 'assigned',
@@ -30,7 +31,7 @@ func Migrate(db *sql.DB) error {
 			slot_no          INTEGER,
 			created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 			cancelled_at     TEXT,
-			leave_token_hash TEXT    NOT NULL,
+			leave_token_hash TEXT    NOT NULL DEFAULT '',
 			leave_token_salt TEXT    NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_reg_event_status    ON registrations(event_id, status, created_at)`,
@@ -40,6 +41,32 @@ func Migrate(db *sql.DB) error {
 			id         TEXT PRIMARY KEY,
 			data       TEXT NOT NULL,
 			expires_at TEXT NOT NULL
+		)`,
+		// 用户账号表（手机号 + 密码）
+		`CREATE TABLE IF NOT EXISTS users (
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			phone         TEXT    NOT NULL UNIQUE,
+			password_hash TEXT    NOT NULL,
+			created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+			updated_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+		)`,
+		// 用户历史游戏昵称（用于下拉快捷填写）
+		`CREATE TABLE IF NOT EXISTS user_game_names (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id      INTEGER NOT NULL REFERENCES users(id),
+			game_name    TEXT    NOT NULL,
+			used_count   INTEGER NOT NULL DEFAULT 1,
+			last_used_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+			UNIQUE(user_id, game_name)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_game_names ON user_game_names(user_id, last_used_at)`,
+		// 登录封禁表（IP 或手机号多次失败后封禁）
+		`CREATE TABLE IF NOT EXISTS login_bans (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			ban_key      TEXT    NOT NULL UNIQUE,
+			banned_until TEXT,
+			fail_count   INTEGER NOT NULL DEFAULT 0,
+			last_fail_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 		)`,
 	}
 	for _, s := range stmts {
@@ -53,6 +80,7 @@ func Migrate(db *sql.DB) error {
 		`ALTER TABLE events ADD COLUMN start_time TEXT`,
 		`ALTER TABLE events ADD COLUMN end_time TEXT`,
 		`ALTER TABLE registrations ADD COLUMN phone TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE registrations ADD COLUMN user_id INTEGER REFERENCES users(id)`,
 	}
 	for _, s := range alterStmts {
 		if _, err := db.Exec(s); err != nil {
