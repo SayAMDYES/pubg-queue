@@ -68,6 +68,7 @@ type PlayerStats struct {
 	GameName    string
 	Matches     int
 	Kills       int
+	Deaths      int
 	Assists     int
 	TotalDamage float64
 	AvgDamage   float64
@@ -119,29 +120,34 @@ func (c *PUBGClient) GetPlayerSeasonStats(playerName string) (*PlayerStats, erro
 	}
 
 	modes := []string{"squad-fpp", "squad", "duo-fpp", "duo", "solo-fpp", "solo"}
-	var totalMatches, totalKills, totalAssists int
+	var totalMatches, totalKills, totalDeaths, totalAssists int
 	var totalDamage float64
 	for _, mode := range modes {
 		if s, ok := statsResp.Data.Attributes.GameModeStats[mode]; ok {
 			totalMatches += s.RoundsPlayed
 			totalKills += s.Kills
+			totalDeaths += s.Losses
 			totalAssists += s.Assists
 			totalDamage += s.DamageDealt
 		}
 	}
 
 	avgDamage := 0.0
+	kda := 0.0
 	if totalMatches > 0 {
 		avgDamage = totalDamage / float64(totalMatches)
 	}
+	kda = float64(totalKills+totalAssists) / math.Max(float64(totalDeaths), 1)
 
 	return &PlayerStats{
 		GameName:    playerName,
 		Matches:     totalMatches,
 		Kills:       totalKills,
+		Deaths:      totalDeaths,
 		Assists:     totalAssists,
 		TotalDamage: totalDamage,
 		AvgDamage:   avgDamage,
+		KDA:         kda,
 	}, nil
 }
 
@@ -337,10 +343,7 @@ func CachePlayerSeasonStats(db *sql.DB, client *PUBGClient, gameName string) {
 		`, gameName)
 		return
 	}
-	kda := 0.0
-	if stats.Matches > 0 {
-		kda = float64(stats.Kills+stats.Assists) / math.Max(float64(stats.Matches), 1)
-	}
+	// Use KDA already computed in GetPlayerSeasonStats (kills+assists / max(deaths, 1))
 	db.Exec(`
 		INSERT INTO player_stats_cache (game_name, matches, kills, assists, total_damage, kda, found, refreshed_at)
 		VALUES (?, ?, ?, ?, ?, ?, 1, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -348,7 +351,7 @@ func CachePlayerSeasonStats(db *sql.DB, client *PUBGClient, gameName string) {
 			matches=excluded.matches, kills=excluded.kills, assists=excluded.assists,
 			total_damage=excluded.total_damage, kda=excluded.kda, found=1,
 			refreshed_at=excluded.refreshed_at
-	`, gameName, stats.Matches, stats.Kills, stats.Assists, stats.TotalDamage, kda)
+	`, gameName, stats.Matches, stats.Kills, stats.Assists, stats.TotalDamage, stats.KDA)
 }
 
 // GetCachedPlayerStats reads cached stats from DB. Returns nil if not cached yet.
@@ -495,19 +498,18 @@ func RefreshEventRankings(db *sql.DB, client *PUBGClient, eventID int64, actualS
 				entries = append(entries, RankEntry{RegID: r.id, GameName: r.name})
 				continue
 			}
-			avgDmg := 0.0
-			if stats.Matches > 0 {
-				avgDmg = stats.TotalDamage / float64(stats.Matches)
-			}
-			score := CalcScore(stats.Kills, 0, stats.Assists, avgDmg)
+			score := CalcScore(stats.Kills, stats.Deaths, stats.Assists, stats.AvgDamage)
+			kda := float64(stats.Kills+stats.Assists) / math.Max(float64(stats.Deaths), 1)
 			entries = append(entries, RankEntry{
 				RegID:       r.id,
 				GameName:    r.name,
 				Matches:     stats.Matches,
 				Kills:       stats.Kills,
+				Deaths:      stats.Deaths,
 				Assists:     stats.Assists,
 				TotalDamage: stats.TotalDamage,
-				AvgDamage:   avgDmg,
+				AvgDamage:   stats.AvgDamage,
+				KDA:         kda,
 				Score:       score,
 			})
 		}
