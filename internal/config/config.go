@@ -19,6 +19,9 @@ type Config struct {
 	RateLimitRegister  int
 	RateLimitLeave     int
 	SecureCookie       bool
+	// PUBG 战绩查询（可选）
+	PUBGAPIKey string
+	PUBGShard  string // 默认 "steam"
 }
 
 func Load() *Config {
@@ -32,6 +35,8 @@ func Load() *Config {
 		RateLimitRegister:  getIntEnv("RATE_LIMIT_REGISTER", 5),
 		RateLimitLeave:     getIntEnv("RATE_LIMIT_LEAVE", 5),
 		SecureCookie:       getBoolEnv("SECURE_COOKIE", false),
+		PUBGAPIKey:         getEnv("PUBG_API_KEY", ""),
+		PUBGShard:          getEnv("PUBG_SHARD", "steam"),
 	}
 	return c
 }

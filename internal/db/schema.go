@@ -68,6 +68,22 @@ func Migrate(db *sql.DB) error {
 			fail_count   INTEGER NOT NULL DEFAULT 0,
 			last_fail_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 		)`,
+		// 活动战绩排名（PUBG API 刷新后写入）
+		`CREATE TABLE IF NOT EXISTS event_rankings (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			event_id     INTEGER NOT NULL REFERENCES events(id),
+			reg_id       INTEGER NOT NULL REFERENCES registrations(id),
+			game_name    TEXT    NOT NULL,
+			matches      INTEGER NOT NULL DEFAULT 0,
+			kills        INTEGER NOT NULL DEFAULT 0,
+			assists      INTEGER NOT NULL DEFAULT 0,
+			total_damage REAL    NOT NULL DEFAULT 0,
+			score        REAL    NOT NULL DEFAULT 0,
+			rank_no      INTEGER,
+			rank_label   TEXT,
+			refreshed_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+			UNIQUE(event_id, reg_id)
+		)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {

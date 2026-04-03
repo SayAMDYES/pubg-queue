@@ -12,6 +12,7 @@ import (
 	"github.com/SayAMDYES/pubg-queue/internal/config"
 	"github.com/SayAMDYES/pubg-queue/internal/middleware"
 	"github.com/SayAMDYES/pubg-queue/internal/model"
+	"github.com/SayAMDYES/pubg-queue/internal/service"
 	"github.com/SayAMDYES/pubg-queue/internal/tmpl"
 	"github.com/gorilla/csrf"
 )
@@ -329,10 +330,44 @@ func (a *AdminHandlers) EventDetail(w http.ResponseWriter, r *http.Request) {
 		"Event":         ev,
 		"Registrations": regs,
 		"CSRFToken":     csrf.Token(r),
+		"PUBGEnabled":   a.cfg.PUBGAPIKey != "",
+	}
+	// 加载已有战绩排名（如果已刷新过）
+	if a.cfg.PUBGAPIKey != "" {
+		rankings, _ := service.GetEventRankings(a.db, ev.ID)
+		data["Rankings"] = rankings
 	}
 	if err := tmpl.Render(w, "admin_event_detail.html", data); err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
+}
+
+// RefreshRankings 触发 PUBG 战绩刷新，写入 event_rankings 表。
+func (a *AdminHandlers) RefreshRankings(w http.ResponseWriter, r *http.Request) {
+	if a.cfg.PUBGAPIKey == "" {
+		renderError(w, r, http.StatusForbidden, "PUBG API Key 未配置")
+		return
+	}
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		renderError(w, r, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	var eventID int64
+	if err := a.db.QueryRow(`SELECT id FROM events WHERE event_date=?`, date).Scan(&eventID); err != nil {
+		renderError(w, r, http.StatusNotFound, "event not found")
+		return
+	}
+
+	client := service.NewPUBGClient(a.cfg.PUBGAPIKey, a.cfg.PUBGShard)
+	// 在后台异步刷新（避免长时间阻塞HTTP请求），刷新完成后重定向
+	go func() {
+		service.RefreshEventRankings(a.db, client, eventID)
+	}()
+
+	// 立即重定向，告知用户刷新已开始
+	http.Redirect(w, r, "/admin/events/"+date+"?msg=ranking_refresh_started", http.StatusFound)
 }
 
 // nullStr 将空字符串转换为 nil（用于可空列）

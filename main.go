@@ -97,6 +97,7 @@ func main() {
 		r.With(authMW.RequireAdmin).Post("/events/{date}", adminH.UpdateEvent)
 		r.With(authMW.RequireAdmin).Post("/events/{date}/toggle", adminH.ToggleEvent)
 		r.With(authMW.RequireAdmin).Post("/events/{date}/clear", adminH.ClearEvent)
+		r.With(authMW.RequireAdmin).Post("/events/{date}/refresh-rankings", adminH.RefreshRankings)
 		r.With(authMW.RequireAdmin).Get("/events/{date}/export", adminH.ExportCSV)
 		r.With(authMW.RequireAdmin).Get("/events/{date}", adminH.EventDetail)
 	})
