@@ -16,7 +16,9 @@ import (
 	"time"
 )
 
-// PUBGClient is a minimal client for the PUBG Developer API.
+// pubgRateLimitDelay is the delay between API calls to stay within the free tier
+// rate limit of 10 requests per minute (= 6 seconds between requests).
+const pubgRateLimitDelay = 6 * time.Second
 type PUBGClient struct {
 	apiKey  string
 	shard   string
@@ -228,8 +230,8 @@ func RefreshEventRankings(db *sql.DB, client *PUBGClient, eventID int64) ([]Rank
 				RegID:    r.id,
 				GameName: r.name,
 			})
-			// Respect rate limit
-			time.Sleep(6 * time.Second)
+			// Respect rate limit: 10 req/min free tier = 6 sec between requests
+			time.Sleep(pubgRateLimitDelay)
 			continue
 		}
 		entries = append(entries, RankEntry{
@@ -242,7 +244,7 @@ func RefreshEventRankings(db *sql.DB, client *PUBGClient, eventID int64) ([]Rank
 			AvgDamage:   stats.AvgDamage,
 			Score:       CalcScore(stats.Kills, stats.AvgDamage, stats.Assists),
 		})
-		time.Sleep(6 * time.Second) // 10 req/min
+		time.Sleep(pubgRateLimitDelay) // 10 req/min free tier
 	}
 
 	// Sort by score descending

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -363,7 +364,14 @@ func (a *AdminHandlers) RefreshRankings(w http.ResponseWriter, r *http.Request) 
 	client := service.NewPUBGClient(a.cfg.PUBGAPIKey, a.cfg.PUBGShard)
 	// 在后台异步刷新（避免长时间阻塞HTTP请求），刷新完成后重定向
 	go func() {
-		service.RefreshEventRankings(a.db, client, eventID)
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[PUBG] RefreshEventRankings panic for event %d: %v", eventID, r)
+			}
+		}()
+		if _, err := service.RefreshEventRankings(a.db, client, eventID); err != nil {
+			log.Printf("[PUBG] RefreshEventRankings error for event %d: %v", eventID, err)
+		}
 	}()
 
 	// 立即重定向，告知用户刷新已开始

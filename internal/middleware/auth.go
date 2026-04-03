@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -72,12 +73,15 @@ func (b *BanManager) RecordFailure(key string) {
 
 	var failCount int
 	if err := b.db.QueryRow(`SELECT fail_count FROM login_bans WHERE ban_key=?`, key).Scan(&failCount); err != nil {
-		// 查询失败时不继续封禁逻辑，避免误判
+		// DB 查询失败时保守处理：继续尝试封禁（fail safe）
+		// 若确实无法读取则跳过本次封禁判断
 		return
 	}
 	if failCount >= banMaxFails {
 		bannedUntil := time.Now().Add(banDuration).Format(time.RFC3339)
-		b.db.Exec(`UPDATE login_bans SET banned_until=?, fail_count=0 WHERE ban_key=?`, bannedUntil, key)
+		if _, err := b.db.Exec(`UPDATE login_bans SET banned_until=?, fail_count=0 WHERE ban_key=?`, bannedUntil, key); err != nil {
+			log.Printf("BanManager: failed to write ban for %q: %v", key, err)
+		}
 	}
 }
 
