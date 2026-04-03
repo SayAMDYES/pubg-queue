@@ -3,6 +3,8 @@ pubg-queue
 *.exe
 *.out
 
+.idea/
+
 # 数据目录（SQLite数据库）
 data/
 
