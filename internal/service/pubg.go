@@ -393,7 +393,7 @@ func CalcScore(kills, deaths, assists int, avgDamage float64) float64 {
 }
 
 // assignRankLabels assigns tier labels based on rank position among N players.
-// Labels: 战神 (1st), 精锐 (2nd if N≥4), 骨干 (middle), 菜鸟 (N-1 if N≥4), 战犯 (last)
+// Labels: 战神 (1st), 精锐 (2nd if N≥4), 骨干 (middle), 菜鸟 (N-1 if N≥5), 战犯 (last)
 // Players with 0 matches get "缺席".
 func assignRankLabels(entries []RankEntry) {
 	n := len(entries)
@@ -407,7 +407,7 @@ func assignRankLabels(entries []RankEntry) {
 			entries[i].RankLabel = "战神"
 		case i == 1 && n >= 4:
 			entries[i].RankLabel = "精锐"
-		case i == n-2 && n >= 4:
+		case i == n-2 && n >= 5:
 			entries[i].RankLabel = "菜鸟"
 		case i == n-1 && n >= 2:
 			entries[i].RankLabel = "战犯"

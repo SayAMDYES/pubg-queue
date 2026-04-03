@@ -59,7 +59,7 @@
           {{ if .Stats }}
             {{ if .Stats.Found }}
               <span style="color:var(--gold)">{{ .Stats.Matches }}场</span>
-              <span style="color:var(--text-secondary)">KDA {{ printf "%.2f" .Stats.KDA }}</span>
+              <span style="color:var(--text-secondary)">KD/A {{ printf "%.2f" .Stats.KDA }}</span>
             {{ else }}
               <span style="color:var(--text-muted);font-style:italic">查不到用户信息</span>
             {{ end }}
