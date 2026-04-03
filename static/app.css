@@ -362,6 +362,29 @@ main.container { padding-top: 1.75rem; padding-bottom: 2.5rem; flex: 1; }
 .slot-phone { color: var(--text-muted); font-size: 0.73rem; margin-left: auto; }
 .slot-empty { color: var(--text-muted); font-style: italic; font-size: 0.78rem; }
 
+/* 队伍槽位表格 */
+.slot-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.slot-th {
+  text-align: left;
+  padding: 0.25rem 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.slot-tr { border-bottom: 1px solid var(--border); }
+.slot-tr:last-child { border-bottom: none; }
+.slot-tr.filled .slot-td { background: var(--green-bg); }
+.slot-tr:not(.filled) .slot-td { background: transparent; }
+.slot-td { padding: 0.35rem 0.45rem; vertical-align: middle; }
+.slot-td.slot-num   { color: var(--text-muted); font-size: 0.75rem; width: 1.6rem; }
+.slot-td.slot-name  { color: var(--text-primary); font-weight: 600; }
+.slot-td.slot-phone { color: var(--text-muted); font-size: 0.73rem; white-space: nowrap; }
+.slot-td.slot-empty { color: var(--text-muted); font-style: italic; font-size: 0.78rem; }
+
+/* 一键邀请 */
+.invite-section { margin-bottom: 1.25rem; }
+
 /* 候补 */
 .waitlist-section {
   background: var(--bg-card);

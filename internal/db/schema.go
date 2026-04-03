@@ -76,6 +76,7 @@ func Migrate(db *sql.DB) error {
 			game_name    TEXT    NOT NULL,
 			matches      INTEGER NOT NULL DEFAULT 0,
 			kills        INTEGER NOT NULL DEFAULT 0,
+			deaths       INTEGER NOT NULL DEFAULT 0,
 			assists      INTEGER NOT NULL DEFAULT 0,
 			total_damage REAL    NOT NULL DEFAULT 0,
 			score        REAL    NOT NULL DEFAULT 0,
@@ -83,6 +84,17 @@ func Migrate(db *sql.DB) error {
 			rank_label   TEXT,
 			refreshed_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 			UNIQUE(event_id, reg_id)
+		)`,
+		// 玩家赛季战绩缓存（用于报名后前台展示）
+		`CREATE TABLE IF NOT EXISTS player_stats_cache (
+			game_name    TEXT    PRIMARY KEY,
+			matches      INTEGER NOT NULL DEFAULT 0,
+			kills        INTEGER NOT NULL DEFAULT 0,
+			assists      INTEGER NOT NULL DEFAULT 0,
+			total_damage REAL    NOT NULL DEFAULT 0,
+			kda          REAL    NOT NULL DEFAULT 0,
+			found        INTEGER NOT NULL DEFAULT 1,
+			refreshed_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 		)`,
 	}
 	for _, s := range stmts {
@@ -97,6 +109,9 @@ func Migrate(db *sql.DB) error {
 		`ALTER TABLE events ADD COLUMN end_time TEXT`,
 		`ALTER TABLE registrations ADD COLUMN phone TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE registrations ADD COLUMN user_id INTEGER REFERENCES users(id)`,
+		`ALTER TABLE events ADD COLUMN actual_start TEXT`,
+		`ALTER TABLE events ADD COLUMN actual_end TEXT`,
+		`ALTER TABLE event_rankings ADD COLUMN deaths INTEGER NOT NULL DEFAULT 0`,
 	}
 	for _, s := range alterStmts {
 		if _, err := db.Exec(s); err != nil {

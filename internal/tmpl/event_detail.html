@@ -38,19 +38,43 @@
 {{ range .Teams }}
 <div class="team-card">
   <div class="team-title">🎮 第 {{ .TeamNo }} 队</div>
-  <ul class="slot-list">
-  {{ range .Slots }}
-  <li class="slot{{ if .Filled }} filled{{ end }}">
-    <span class="slot-num">{{ .SlotNo }}</span>
-    {{ if .Filled }}
-      <span class="slot-name">{{ .Name }}</span>
-      <span class="slot-phone">{{ .Phone }}</span>
-    {{ else }}
-      <span class="slot-empty">空位</span>
+  <table class="slot-table">
+    <thead>
+      <tr>
+        <th class="slot-th">#</th>
+        <th class="slot-th">游戏名</th>
+        <th class="slot-th">手机</th>
+        {{ if $.PUBGEnabled }}<th class="slot-th">战绩</th>{{ end }}
+      </tr>
+    </thead>
+    <tbody>
+    {{ range .Slots }}
+    <tr class="slot-tr{{ if .Filled }} filled{{ end }}">
+      <td class="slot-td slot-num">{{ .SlotNo }}</td>
+      {{ if .Filled }}
+        <td class="slot-td slot-name">{{ .Name }}</td>
+        <td class="slot-td slot-phone">{{ .Phone }}</td>
+        {{ if $.PUBGEnabled }}
+        <td class="slot-td" style="font-size:0.75rem">
+          {{ if .Stats }}
+            {{ if .Stats.Found }}
+              <span style="color:var(--gold)">{{ .Stats.Matches }}场</span>
+              <span style="color:var(--text-secondary)">KD/A {{ printf "%.2f" .Stats.KDA }}</span>
+            {{ else }}
+              <span style="color:var(--text-muted);font-style:italic">查不到用户信息</span>
+            {{ end }}
+          {{ else }}
+            <span style="color:var(--text-muted)">—</span>
+          {{ end }}
+        </td>
+        {{ end }}
+      {{ else }}
+        <td class="slot-td slot-empty"{{ if $.PUBGEnabled }} colspan="3"{{ else }} colspan="2"{{ end }}>空位</td>
+      {{ end }}
+    </tr>
     {{ end }}
-  </li>
-  {{ end }}
-  </ul>
+    </tbody>
+  </table>
 </div>
 {{ end }}
 </div>
@@ -58,15 +82,33 @@
 {{ if .Waitlist }}
 <div class="waitlist-section">
   <h3>⏳ 候补名单（{{ len .Waitlist }} 人）</h3>
-  <ol class="waitlist-list">
-  {{ range $i, $w := .Waitlist }}
-  <li class="waitlist-item">
-    <span class="waitlist-rank">{{ add $i 1 }}.</span>
-    <span class="waitlist-name">{{ $w.Name }}</span>
-    <span class="waitlist-phone">{{ $w.Phone }}</span>
-  </li>
-  {{ end }}
-  </ol>
+  <table class="slot-table" style="margin-top:0.5rem;width:100%">
+    <thead>
+      <tr>
+        <th class="slot-th">序号</th>
+        <th class="slot-th">游戏名</th>
+        <th class="slot-th">手机</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{ range $i, $w := .Waitlist }}
+    <tr class="slot-tr filled">
+      <td class="slot-td slot-num">{{ add $i 1 }}</td>
+      <td class="slot-td slot-name">{{ $w.Name }}</td>
+      <td class="slot-td slot-phone">{{ $w.Phone }}</td>
+    </tr>
+    {{ end }}
+    </tbody>
+  </table>
+</div>
+{{ end }}
+
+{{ if .Event.Open }}
+<div class="invite-section">
+  <button class="btn btn-secondary btn-sm" id="inviteBtn" onclick="copyInvite()">
+    📣 一键邀请好友
+  </button>
+  <span id="inviteCopied" style="display:none;color:var(--green);font-size:0.82rem;margin-left:0.5rem">✓ 已复制到剪贴板</span>
 </div>
 {{ end }}
 
@@ -125,6 +167,73 @@
   </div>
 
 </div>
+
+<script>
+function copyInvite() {
+  var eventDate = {{ .Event.EventDate | printf "%q" }};
+  var startTime = {{ .Event.StartTime | printf "%q" }};
+  var teamCount = {{ .Event.TeamCount }};
+  var capacity   = {{ .Capacity }};
+  var registered = {{ .RegisteredCount }};
+  var remaining  = capacity - registered;
+  var pageURL    = window.location.href.split('?')[0];
+
+  var lines = [];
+  lines.push('🔥 战友集结令！🔥');
+  lines.push('');
+  lines.push('🎮 ' + eventDate + ' 趴布鸡开黑啦！');
+  if (startTime) lines.push('⏰ 开战时间：' + startTime);
+  lines.push('👥 共 ' + teamCount + ' 支精英小队，合计 ' + capacity + ' 个席位');
+  if (remaining > 0) {
+    lines.push('💥 还剩 ' + remaining + ' 个空位，先到先得！');
+  } else {
+    lines.push('🌟 席位已满！快来候补，有位就递补！');
+  }
+  lines.push('');
+  lines.push('✨ 这里有激情、有热血、有快乐！');
+  lines.push('🏆 一起吃鸡、一起上分、永不独行！');
+  lines.push('');
+  lines.push('�� 点击立即报名：');
+  lines.push(pageURL);
+  lines.push('');
+  lines.push('#PUBG #趴布鸡 #吃鸡开黑 #一起组队');
+
+  var text = lines.join('\n');
+  var btn = document.getElementById('inviteBtn');
+  var tip = document.getElementById('inviteCopied');
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      showCopied(btn, tip);
+    }).catch(function() {
+      fallbackCopy(text, btn, tip);
+    });
+  } else {
+    fallbackCopy(text, btn, tip);
+  }
+}
+
+function fallbackCopy(text, btn, tip) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); showCopied(btn, tip); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+function showCopied(btn, tip) {
+  tip.style.display = 'inline';
+  btn.textContent = '✓ 已复制';
+  setTimeout(function() {
+    tip.style.display = 'none';
+    btn.textContent = '📣 一键邀请好友';
+  }, 3000);
+}
+</script>
 {{ end }}
 
 {{ define "event_detail.html" }}
