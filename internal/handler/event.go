@@ -193,6 +193,8 @@ func RegisterHandler(db *sql.DB, cfg *config.Config, bans interface{ IsBanned(st
 			return
 		}
 
+		// plainToken is intentionally not used: users now leave via phone+password,
+		// so the 6-digit token is no longer shown to the user.
 		_, status, _, err := service.Register(db, ev.ID, userID, name, phone, cfg.AllowDuplicateName)
 		if err != nil {
 			errCode := err.Error()

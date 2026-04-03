@@ -22,9 +22,8 @@ type sessionData struct {
 // ─── Ban Manager ──────────────────────────────────────────────────────────────
 
 const (
-	banMaxFails   = 5
-	banDuration   = 24 * time.Hour
-	banWindowMins = 10 // 窗口内达到 banMaxFails 则封禁
+	banMaxFails = 5
+	banDuration = 24 * time.Hour
 )
 
 // BanManager 基于数据库的 IP/手机号封禁管理器（持久化，重启后仍有效）。
@@ -72,7 +71,10 @@ func (b *BanManager) RecordFailure(key string) {
 	`, key, now, now)
 
 	var failCount int
-	b.db.QueryRow(`SELECT fail_count FROM login_bans WHERE ban_key=?`, key).Scan(&failCount)
+	if err := b.db.QueryRow(`SELECT fail_count FROM login_bans WHERE ban_key=?`, key).Scan(&failCount); err != nil {
+		// 查询失败时不继续封禁逻辑，避免误判
+		return
+	}
 	if failCount >= banMaxFails {
 		bannedUntil := time.Now().Add(banDuration).Format(time.RFC3339)
 		b.db.Exec(`UPDATE login_bans SET banned_until=?, fail_count=0 WHERE ban_key=?`, bannedUntil, key)

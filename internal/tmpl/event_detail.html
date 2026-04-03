@@ -82,7 +82,7 @@
         <input type="tel" name="phone" required maxlength="11" pattern="1[3-9][0-9]{9}"
                placeholder="请输入中国大陆手机号"
                value="{{ .UserPhone }}"
-               {{ if .UserLoggedIn }}readonly{{ end }}>
+               {{ if .UserLoggedIn }}readonly aria-readonly="true" style="opacity:0.65;cursor:not-allowed"{{ end }}>
       </div>
       <div class="form-group">
         <label class="form-label">{{ if .UserLoggedIn }}验证密码{{ else }}密码（首次设置 / 已有账号验证）{{ end }}</label>
@@ -114,7 +114,7 @@
         <input type="tel" name="phone" required maxlength="11" pattern="1[3-9][0-9]{9}"
                placeholder="报名时使用的手机号"
                value="{{ .UserPhone }}"
-               {{ if .UserLoggedIn }}readonly{{ end }}>
+               {{ if .UserLoggedIn }}readonly aria-readonly="true" style="opacity:0.65;cursor:not-allowed"{{ end }}>
       </div>
       <div class="form-group">
         <label class="form-label">密码</label>
