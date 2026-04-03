@@ -371,6 +371,7 @@ main.container { padding-top: 1.75rem; padding-bottom: 2.5rem; flex: 1; }
   font-size: 0.72rem;
   font-weight: 600;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 .slot-tr { border-bottom: 1px solid var(--border); }
 .slot-tr:last-child { border-bottom: none; }

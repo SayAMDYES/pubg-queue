@@ -193,7 +193,7 @@ function copyInvite() {
   lines.push('✨ 这里有激情、有热血、有快乐！');
   lines.push('🏆 一起吃鸡、一起上分、永不独行！');
   lines.push('');
-  lines.push('�� 点击立即报名：');
+  lines.push('📱 点击立即报名：');
   lines.push(pageURL);
   lines.push('');
   lines.push('#PUBG #趴布鸡 #吃鸡开黑 #一起组队');
@@ -216,13 +216,29 @@ function copyInvite() {
 function fallbackCopy(text, btn, tip) {
   var ta = document.createElement('textarea');
   ta.value = text;
+  ta.setAttribute('readonly', '');
   ta.style.position = 'fixed';
-  ta.style.opacity = '0';
+  ta.style.top = '0';
+  ta.style.left = '0';
+  ta.style.width = '2em';
+  ta.style.height = '2em';
+  ta.style.padding = '0';
+  ta.style.border = 'none';
+  ta.style.outline = 'none';
+  ta.style.boxShadow = 'none';
+  ta.style.background = 'transparent';
   document.body.appendChild(ta);
   ta.focus();
   ta.select();
-  try { document.execCommand('copy'); showCopied(btn, tip); } catch(e) {}
+  ta.setSelectionRange(0, ta.value.length);
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch(e) {}
   document.body.removeChild(ta);
+  if (ok) {
+    showCopied(btn, tip);
+  } else {
+    window.prompt('复制以下内容，然后发送给好友：', text);
+  }
 }
 
 function showCopied(btn, tip) {
@@ -233,6 +249,13 @@ function showCopied(btn, tip) {
     btn.textContent = '📣 一键邀请好友';
   }, 3000);
 }
+
+window.addEventListener('pageshow', function(e) {
+  var tip = document.getElementById('inviteCopied');
+  var btn = document.getElementById('inviteBtn');
+  if (tip) tip.style.display = 'none';
+  if (btn) btn.textContent = '📣 一键邀请好友';
+});
 </script>
 {{ end }}
 
