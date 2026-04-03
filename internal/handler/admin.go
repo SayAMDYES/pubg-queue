@@ -462,7 +462,6 @@ func (a *AdminHandlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 		renderError(w, r, http.StatusInternalServerError, "database error")
 		return
 	}
-	defer rows.Close()
 
 	var users []UserRow
 	for rows.Next() {
@@ -470,18 +469,21 @@ func (a *AdminHandlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&u.ID, &u.Phone, &u.CreatedAt, &u.RegCount); err != nil {
 			continue
 		}
-		// Load game names
-		gnRows, err := a.db.Query(`SELECT game_name FROM user_game_names WHERE user_id=? ORDER BY last_used_at DESC LIMIT 5`, u.ID)
+		users = append(users, u)
+	}
+	rows.Close()
+
+	for i := range users {
+		gnRows, err := a.db.Query(`SELECT game_name FROM user_game_names WHERE user_id=? ORDER BY last_used_at DESC LIMIT 5`, users[i].ID)
 		if err == nil {
 			for gnRows.Next() {
 				var gn string
 				if gnRows.Scan(&gn) == nil {
-					u.GameNames = append(u.GameNames, gn)
+					users[i].GameNames = append(users[i].GameNames, gn)
 				}
 			}
 			gnRows.Close()
 		}
-		users = append(users, u)
 	}
 
 	data := map[string]interface{}{
