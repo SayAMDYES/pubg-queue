@@ -10,17 +10,22 @@
 <body>
 <header class="site-header">
   <div class="container">
-    <a href="/" class="logo">🐔 趴布鸡排队</a>
+    <a href="/" class="logo"><span class="logo-icon">🐔</span> 趴布鸡排队</a>
   </div>
 </header>
 <main class="container">
-<div class="success-box">
+<div class="result-box">
   <h2>👋 已成功离队</h2>
   <p><strong>{{ .LeftName }}</strong> 已离开队伍。</p>
   {{ if .PromotedName }}
-  <p>🎉 候补玩家 <strong>{{ .PromotedName }}</strong> 已自动晋升入队！</p>
+  <p style="color:var(--green);font-weight:600">🎉 候补玩家 <strong>{{ .PromotedName }}</strong> 已自动晋升入队！</p>
   {{ end }}
-  <a href="/" class="btn btn-primary">返回首页</a>
+  <div class="btn-group">
+    {{ if .EventDate }}
+    <a href="/date/{{ .EventDate }}" class="btn btn-primary">返回活动页</a>
+    {{ end }}
+    <a href="/" class="btn btn-secondary">返回首页</a>
+  </div>
 </div>
 </main>
 <footer class="site-footer">

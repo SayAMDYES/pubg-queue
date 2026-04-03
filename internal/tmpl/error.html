@@ -10,14 +10,16 @@
 <body>
 <header class="site-header">
   <div class="container">
-    <a href="/" class="logo">🐔 趴布鸡排队</a>
+    <a href="/" class="logo"><span class="logo-icon">🐔</span> 趴布鸡排队</a>
   </div>
 </header>
 <main class="container">
-<div class="error-box">
+<div class="result-box">
   <h2>错误 {{ .Code }}</h2>
   <p>{{ .Message }}</p>
-  <a href="/" class="btn btn-primary">返回首页</a>
+  <div class="btn-group">
+    <a href="/" class="btn btn-primary">返回首页</a>
+  </div>
 </div>
 </main>
 </body>

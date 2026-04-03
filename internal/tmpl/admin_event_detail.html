@@ -10,37 +10,84 @@
 <body>
 <header class="site-header">
   <div class="container">
-    <a href="/" class="logo">🐔 趴布鸡排队</a>
+    <a href="/" class="logo"><span class="logo-icon">🐔</span> 趴布鸡排队</a>
     <nav>
-      <a href="/admin" class="nav-link">返回后台</a>
+      <a href="/admin" class="nav-link">← 返回后台</a>
     </nav>
   </div>
 </header>
 <main class="container">
-<div class="admin-header">
+<div class="admin-bar">
   <h2>{{ .Event.EventDate }} 报名详情</h2>
-  <div class="actions">
-    <a href="/admin/events/{{ .Event.EventDate }}/edit" class="btn btn-small">编辑活动</a>
-    <a href="/admin/events/{{ .Event.EventDate }}/export" class="btn btn-small btn-secondary">导出CSV</a>
-    <form method="POST" action="/admin/events/{{ .Event.EventDate }}/clear" style="display:inline" onsubmit="return confirm('确认清空所有报名？')">
+  <div class="actions-cell">
+    <a href="/admin/events/{{ .Event.EventDate }}/edit" class="btn btn-outline btn-sm">编辑活动</a>
+    <a href="/admin/events/{{ .Event.EventDate }}/export" class="btn btn-outline btn-sm">导出 CSV</a>
+    {{ if .PUBGEnabled }}
+    <form method="POST" action="/admin/events/{{ .Event.EventDate }}/refresh-rankings" style="display:inline">
       <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
-      <button type="submit" class="btn btn-small btn-danger">清空报名</button>
+      <button type="submit" class="btn btn-sm" style="background:var(--gold);color:#0a0a0a"
+              onclick="this.textContent='刷新中…';this.disabled=true">🎯 刷新战绩</button>
+    </form>
+    {{ end }}
+    <form method="POST" action="/admin/events/{{ .Event.EventDate }}/clear" style="display:inline"
+          onsubmit="return confirm('确认清空所有报名？')">
+      <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+      <button type="submit" class="btn btn-sm btn-danger">清空报名</button>
     </form>
   </div>
 </div>
 
-<div class="event-meta card-detail">
+<div class="event-meta" style="margin-bottom:1.5rem">
   {{ if and .Event.StartTime .Event.EndTime }}
-  <p class="event-time-display">🕐 活动时间：{{ .Event.StartTime }} - {{ .Event.EndTime }}</p>
+  <span class="event-meta-item">🕐 <strong>{{ .Event.StartTime }} – {{ .Event.EndTime }}</strong></span>
   {{ else if .Event.StartTime }}
-  <p class="event-time-display">🕐 活动时间：{{ .Event.StartTime }} 开始</p>
+  <span class="event-meta-item">🕐 <strong>{{ .Event.StartTime }}</strong> 开始</span>
   {{ end }}
-  {{ if .Event.Note }}<p class="event-note">📝 {{ .Event.Note }}</p>{{ end }}
-  <p>状态：{{ if .Event.Open }}<span class="badge badge-open">报名开放</span>{{ else }}<span class="badge badge-closed">已关闭</span>{{ end }}</p>
+  <span class="event-meta-item">状态：{{ if .Event.Open }}<span class="badge badge-open">开放</span>{{ else }}<span class="badge badge-closed">关闭</span>{{ end }}</span>
+  {{ if .Event.Note }}<span class="event-note">📝 {{ .Event.Note }}</span>{{ end }}
 </div>
 
+{{ if .Rankings }}
+<h3 style="margin-bottom:0.75rem;color:var(--gold)">🏆 战绩排名</h3>
+<div class="table-wrap" style="margin-bottom:1.5rem">
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>排名</th>
+      <th>游戏名称</th>
+      <th>场次</th>
+      <th>击杀</th>
+      <th>助攻</th>
+      <th>场均伤害</th>
+      <th>评分</th>
+      <th>称号</th>
+    </tr>
+  </thead>
+  <tbody>
+  {{ range .Rankings }}
+  <tr>
+    <td style="font-weight:700;color:var(--gold)">{{ .RankNo }}</td>
+    <td style="font-weight:600">{{ .GameName }}</td>
+    <td class="text-sm text-muted">{{ .Matches }}</td>
+    <td class="text-sm">{{ .Kills }}</td>
+    <td class="text-sm">{{ .Assists }}</td>
+    <td class="text-sm">{{ printf "%.0f" .AvgDamage }}</td>
+    <td class="text-sm">{{ printf "%.1f" .Score }}</td>
+    <td>
+      {{ if eq .RankLabel "战神" }}<span class="badge badge-open" style="font-size:0.85rem">🔥 战神</span>
+      {{ else if eq .RankLabel "战犯" }}<span class="badge badge-closed" style="font-size:0.85rem;background:var(--red-bg);color:var(--red);border-color:var(--red-border)">💀 战犯</span>
+      {{ end }}
+    </td>
+  </tr>
+  {{ end }}
+  </tbody>
+</table>
+</div>
+{{ end }}
+
+<h3 style="margin-bottom:0.75rem">报名名单</h3>
 <div class="table-wrap">
-<table class="admin-table">
+<table class="data-table">
   <thead>
     <tr>
       <th>昵称</th>
@@ -54,19 +101,19 @@
   <tbody>
   {{ range .Registrations }}
   <tr>
-    <td>{{ .Name }}</td>
-    <td><code>{{ .Phone }}</code></td>
+    <td style="font-weight:600">{{ .Name }}</td>
+    <td><code style="font-size:0.82rem;color:var(--text-secondary)">{{ .Phone }}</code></td>
     <td>
       {{ if eq .Status "assigned" }}<span class="badge badge-open">已入队</span>
       {{ else if eq .Status "waitlist" }}<span class="badge badge-full">候补</span>
       {{ else }}<span class="badge badge-closed">{{ .Status }}</span>{{ end }}
     </td>
-    <td>{{ if .TeamNo }}第 {{ .TeamNo }} 队{{ else }}-{{ end }}</td>
-    <td>{{ if .SlotNo }}第 {{ .SlotNo }} 位{{ else }}-{{ end }}</td>
-    <td class="created-at-cell">{{ .CreatedAt }}</td>
+    <td class="text-sm text-muted">{{ if .TeamNo }}第 {{ .TeamNo }} 队{{ else }}—{{ end }}</td>
+    <td class="text-sm text-muted">{{ if .SlotNo }}第 {{ .SlotNo }} 位{{ else }}—{{ end }}</td>
+    <td class="text-sm text-muted">{{ .CreatedAt }}</td>
   </tr>
   {{ else }}
-  <tr><td colspan="6" class="empty-msg">暂无报名记录</td></tr>
+  <tr><td colspan="6" class="empty-state">暂无报名记录</td></tr>
   {{ end }}
   </tbody>
 </table>
