@@ -13,3 +13,6 @@ data/
 
 # Go工具缓存
 vendor/
+
+# 前端依赖
+frontend/node_modules/

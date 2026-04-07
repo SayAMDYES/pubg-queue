@@ -1,7 +1,15 @@
-.PHONY: build run test clean hash
+.PHONY: build run test clean hash tidy frontend build-all
 
+# 仅构建后端（需先构建前端）
 build:
 	go build -o pubg-queue .
+
+# 构建前端
+frontend:
+	cd frontend && npm ci && npm run build
+
+# 完整构建（前端 + 后端）
+build-all: frontend build
 
 run:
 	go run .
@@ -11,6 +19,7 @@ test:
 
 clean:
 	rm -f pubg-queue data/pubg_queue.db
+	rm -rf frontend/dist
 
 hash:
 	@read -p "Password: " pw && \

@@ -3,7 +3,7 @@ services:
   pubg-queue:
     build: .
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:8080"
     volumes:
       - ./data:/data
     environment:
@@ -12,6 +12,11 @@ services:
       - SESSION_SECRET=${SESSION_SECRET}
       - CSRF_SECRET=${CSRF_SECRET}
       - TZ=Asia/Shanghai
-      - SECURE_COOKIE=false
+      - SECURE_COOKIE=${SECURE_COOKIE:-false}
+      - PUBG_API_KEY=${PUBG_API_KEY:-}
+      - PUBG_SHARD=${PUBG_SHARD:-steam}
+      - ALLOW_DUPLICATE_NAME=${ALLOW_DUPLICATE_NAME:-false}
+      - RATE_LIMIT_REGISTER=${RATE_LIMIT_REGISTER:-5}
+      - RATE_LIMIT_LEAVE=${RATE_LIMIT_LEAVE:-5}
     command: ["./pubg-queue", "--admin-pass", "${ADMIN_PASS}"]
     restart: unless-stopped

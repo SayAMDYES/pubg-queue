@@ -1,6 +1,6 @@
 # 🐔 趴布鸡排队
 
-一个基于 Go + SQLite 的 PUBG 活动排队系统，提供日历视图、报名候补、手机号账号登录、离队递补、管理后台、战绩排名和一键邀请。
+基于 Go + React + Ant Design 的 PUBG 活动排队系统，前后端分离架构，提供日历视图、报名候补、手机号账号登录、离队递补、管理后台、战绩排名和一键邀请。
 
 ## ✨ 功能概览
 
@@ -9,75 +9,142 @@
 - 每个活动显示：开始时间、报名状态（开放 / 满员 / 已关闭）、已报 / 总容量
 
 ### 🎮 活动详情页
-- 队伍分组以**表格形式**清晰展示：位置 / 游戏名 / 手机号（脱敏）
-- 若配置了 PUBG API Key，自动展示每位玩家的**赛季总场次**和 **KD/A**，查不到账号时显示灰色提示
+- 队伍分组以表格形式清晰展示：位置 / 游戏名 / 手机号（脱敏）
+- 若配置了 PUBG API Key，自动展示每位玩家的赛季总场次和 KD/A
 - 候补名单按报名顺序以表格列出
 - 报名表单：手机号 + 密码（首次自动注册）+ 游戏昵称，支持历史昵称下拉
 - 离队表单：手机号 + 密码一键退出，系统自动递补候补首位
-- 📣 **一键邀请**：生成小红书风格的开黑邀请文案，一键复制到剪贴板，直达当日报名链接
+- 📣 一键邀请：生成开黑邀请文案，一键复制到剪贴板
 
 ### 🔒 用户账号体系
 - 以手机号为唯一标识，首次报名自动注册
 - 密码使用 bcrypt 存储，多次错误自动触发 24 小时封禁
-- Session 登录状态保持，再次打开页面无需重新输入手机号
+- Session 登录状态保持
 
 ### 🛡️ 管理后台
 
 #### 📋 活动管理
-- 创建、编辑、开关、清空活动
-- 每场活动可设置：活动日期、队伍数量、预计开始 / 结束时间、**实际开战时间 / 结束时间**（用于战绩精确查询）、备注
+- 创建、编辑、开关、清空、删除活动
+- 每场活动可设置：活动日期、队伍数量、预计开始/结束时间、实际开战/结束时间、备注
 - 查看完整手机号报名名单，导出 CSV
 
-#### 👤 账号管理（新功能）
+#### 👤 账号管理
 - 查看所有已注册用户：手机号、历史游戏名、报名次数、注册时间
 - 编辑用户手机号（同步更新关联报名记录）
 - 删除 / 添加用户历史游戏名
+- 重置用户密码
+- 查看用户报名历史
 
-#### 🏆 战绩排名（全新重构）
-- 若已配置实际开战 / 结束时间，刷新时精确查询该**时段内**的所有场次
+#### 🏆 战绩排名
+- 若已配置实际开战/结束时间，刷新时精确查询该时段内的所有场次
 - 未配置实际时间时，回退为赛季总数据统计
-- 统计指标：场次 / 击杀 / 死亡 / 助攻 / **KD/A** / 场均伤害
+- 统计指标：场次 / 击杀 / 死亡 / 助攻 / KD/A / 场均伤害
 - 综合评分公式：`KDA × 15 + 场均伤害 × 0.05`
 - 多档称号：🔥 战神 / ⚔️ 精锐 / 🛡️ 骨干 / 🐣 菜鸟 / 💀 战犯 / 👻 缺席
-- 异步刷新，不阻塞页面，完成后刷新即可查看
 
 ## 🔧 技术栈
 
+### 后端
 - **Go 1.21**
 - [chi](https://github.com/go-chi/chi) — HTTP 路由
 - **SQLite**（`modernc.org/sqlite`）— 嵌入式数据库
-- `gorilla/csrf` — CSRF 防护
 - `bcrypt` — 密码哈希
+- RESTful JSON API
+
+### 前端
+- **React 19** + **TypeScript**
+- **Ant Design 5** — UI 组件库
+- **React Router v7** — 前端路由
+- **Vite** — 构建工具
+- **Axios** — HTTP 客户端
 
 ## 📁 项目结构
 
 ```text
 .
-├── cmd/genhash              # 历史密码哈希工具
-├── internal
-│   ├── config               # 环境配置
-│   ├── db                   # SQLite 打开与迁移
-│   ├── handler              # HTTP 处理器
-│   ├── middleware           # 认证、限流、安全头、封禁
-│   ├── model                # 数据模型
-│   ├── service              # 报名、用户、PUBG API 等业务逻辑
-│   └── tmpl                 # HTML 模板
-├── static                   # 静态资源（CSS）
-├── data                     # 默认数据库目录
-├── main.go                  # 程序入口
-└── docker-compose.yml
+├── frontend/                # React + AntD 前端 SPA
+│   ├── src/
+│   │   ├── pages/           # 页面组件
+│   │   │   ├── CalendarPage.tsx
+│   │   │   ├── EventDetailPage.tsx
+│   │   │   └── admin/       # 管理后台页面
+│   │   ├── api.ts           # API 接口定义
+│   │   ├── request.ts       # Axios 封装
+│   │   ├── App.tsx          # 路由入口
+│   │   └── main.tsx         # 应用入口
+│   ├── index.html
+│   ├── vite.config.ts
+│   └── package.json
+├── internal/
+│   ├── api/                 # JSON API 处理器
+│   │   ├── response.go      # 统一响应结构
+│   │   ├── public.go        # 公共 API（日历、活动、报名、离队）
+│   │   ├── admin.go         # 管理 API
+│   │   └── helpers.go       # 公用辅助函数
+│   ├── config/              # 环境配置
+│   ├── db/                  # SQLite 打开与迁移
+│   ├── handler/             # 旧版 HTML 处理器（已弃用，保留兼容）
+│   ├── middleware/           # 认证、限流、安全头、封禁
+│   ├── model/               # 数据模型
+│   ├── service/             # 业务逻辑（报名、用户、PUBG API）
+│   └── tmpl/                # 旧版 HTML 模板（已弃用）
+├── main.go                  # 程序入口（API 路由 + 嵌入前端）
+├── Dockerfile               # 三阶段构建（Node → Go → Alpine）
+├── docker-compose.yml       # 一键部署
+├── Makefile                 # 构建命令
+└── .env.example             # 环境变量模板
 ```
 
-## 🚀 本地运行
+## 🚀 快速开始
 
-1. 配置环境变量（参考下方表格）
-2. 使用明文管理员密码启动：
+### Docker Compose 一键部署（推荐）
 
+1. 复制环境变量文件：
 ```bash
+cp .env.example .env
+```
+
+2. 编辑 `.env`，设置 `ADMIN_PASS`、`SESSION_SECRET`、`CSRF_SECRET`：
+```bash
+vim .env
+```
+
+3. 启动服务：
+```bash
+docker compose up -d --build
+```
+
+4. 访问 `http://localhost:8080`
+
+**数据持久化**：数据库文件存储在宿主机 `./data/pubg_queue.db`，容器重建不会丢失数据。
+
+### 本地开发
+
+#### 后端
+```bash
+# 先构建前端（后端通过 embed 嵌入前端 dist）
+cd frontend && npm ci && npm run build && cd ..
+
+# 启动后端
 go run . --admin-pass "your-admin-password"
 ```
 
-默认监听 `http://localhost:8080`。
+#### 前端开发模式（带热更新）
+```bash
+# 终端 1：启动后端
+go run . --admin-pass "your-admin-password"
+
+# 终端 2：启动前端开发服务器（自动代理 /api 到 localhost:8080）
+cd frontend && npm run dev
+```
+
+前端开发服务器默认运行在 `http://localhost:5173`，API 请求自动代理到后端。
+
+### 完整构建
+```bash
+make build-all
+./pubg-queue --admin-pass "your-admin-password"
+```
 
 ## ⚙️ 环境变量
 
@@ -97,46 +164,53 @@ go run . --admin-pass "your-admin-password"
 
 > **说明**：管理员用户名固定为 `admin`，密码通过 `--admin-pass` 参数传入并在进程内即时哈希，不写磁盘。
 
-## 🐳 Docker Compose
+## 🗺️ API 路由
 
-```bash
-ADMIN_PASS=your-admin-password \
-SESSION_SECRET=replace-with-random-string \
-CSRF_SECRET=replace-with-another-random-string \
-docker compose up -d --build
-```
+### 公共 API
 
-数据库持久化到宿主机 `./data` 目录。
+| 路由 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/calendar?month=YYYY-MM` | GET | 月历数据 |
+| `/api/events/{date}` | GET | 活动详情 |
+| `/api/events/{date}/register` | POST | 报名 |
+| `/api/events/{date}/leave` | POST | 离队 |
+| `/api/leave` | POST | 旧版 token 离队（向后兼容） |
 
-## 🗺️ 主要路由
+### 管理 API（需 admin session）
 
-### 前台
+| 路由 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/admin/login` | POST | 管理员登录 |
+| `/api/admin/logout` | POST | 管理员登出 |
+| `/api/admin/check` | GET | 检查登录状态 |
+| `/api/admin/events` | GET | 活动列表 |
+| `/api/admin/events` | POST | 创建活动 |
+| `/api/admin/events/{date}` | GET | 活动详情 |
+| `/api/admin/events/{date}` | PUT | 更新活动 |
+| `/api/admin/events/{date}` | DELETE | 删除活动 |
+| `/api/admin/events/{date}/toggle` | POST | 开关报名 |
+| `/api/admin/events/{date}/clear` | POST | 清空报名 |
+| `/api/admin/events/{date}/refresh-rankings` | POST | 刷新战绩排名 |
+| `/api/admin/events/{date}/export` | GET | 导出 CSV |
+| `/api/admin/users` | GET | 用户列表 |
+| `/api/admin/users/{id}` | GET | 用户详情 |
+| `/api/admin/users/{id}` | PUT | 更新用户 |
+| `/api/admin/users/{id}` | DELETE | 删除用户 |
+| `/api/admin/users/{id}/reset-password` | POST | 重置密码 |
+
+### 前端路由（SPA）
 
 | 路由 | 说明 |
 | --- | --- |
-| `GET /` | 日历首页 |
-| `GET /date/{date}` | 活动详情页 |
-| `POST /date/{date}/register` | 报名 |
-| `POST /date/{date}/leave` | 手机号 + 密码离队 |
-| `POST /leave` | 旧版 token 离队（向后兼容） |
-
-### 后台
-
-| 路由 | 说明 |
-| --- | --- |
-| `GET /admin` | 活动列表 |
-| `GET /admin/events/{date}` | 活动报名详情 |
-| `GET /admin/events/new` | 新建活动 |
-| `POST /admin/events` | 创建活动 |
-| `GET /admin/events/{date}/edit` | 编辑活动 |
-| `POST /admin/events/{date}` | 更新活动 |
-| `POST /admin/events/{date}/toggle` | 开关报名 |
-| `POST /admin/events/{date}/clear` | 清空报名 |
-| `GET /admin/events/{date}/export` | 导出 CSV |
-| `POST /admin/events/{date}/refresh-rankings` | 刷新战绩排名 |
-| `GET /admin/users` | 用户列表 |
-| `GET /admin/users/{id}/edit` | 编辑用户 |
-| `POST /admin/users/{id}` | 保存用户修改 |
+| `/` | 日历首页 |
+| `/date/{date}` | 活动详情页 |
+| `/admin/login` | 管理员登录 |
+| `/admin` | 管理后台仪表盘 |
+| `/admin/events/new` | 新建活动 |
+| `/admin/events/{date}` | 活动管理详情 |
+| `/admin/events/{date}/edit` | 编辑活动 |
+| `/admin/users` | 账号管理 |
+| `/admin/users/{id}/edit` | 编辑用户 |
 
 ## 📏 业务规则
 
@@ -155,15 +229,34 @@ docker compose up -d --build
 - 活动页面自动展示，找不到账号时显示灰色提示
 
 ### 后台战绩排名刷新
-- 若活动配置了**实际开战时间**和**实际结束时间**，按该时段内的历史场次统计
+- 若活动配置了实际开战时间和实际结束时间，按该时段内的历史场次统计
 - 否则使用赛季总数据回退
 - 评分：`KDA × 15 + 场均伤害 × 0.05`（KDA = (击杀+助攻) / max(死亡, 1)）
 - 为适配免费限速（10 req/min），请求之间自动等待 6 秒
 
+## 🔄 数据迁移
+
+系统使用 SQLite 数据库，文件路径由 `DB_PATH` 环境变量控制（默认 `./data/pubg_queue.db`）。
+
+- **升级部署**：Docker Compose 挂载 `./data` 目录，数据库文件在容器重建时不会丢失
+- **备份**：只需备份 `data/pubg_queue.db` 文件即可
+- **迁移**：将旧版数据库文件复制到新部署的 `data/` 目录下，启动后自动完成 schema 迁移
+
 ## 🛠️ 开发命令
 
 ```bash
-go build -o pubg-queue .
-go test ./...
-go run . --admin-pass "your-admin-password"
+# 完整构建
+make build-all
+
+# 仅构建前端
+make frontend
+
+# 仅构建后端（需先构建前端）
+make build
+
+# 运行测试
+make test
+
+# 启动
+./pubg-queue --admin-pass "your-admin-password"
 ```
