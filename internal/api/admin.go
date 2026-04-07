@@ -1,0 +1,791 @@
+package api
+
+import (
+	"database/sql"
+	"encoding/csv"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/SayAMDYES/pubg-queue/internal/config"
+	"github.com/SayAMDYES/pubg-queue/internal/middleware"
+	"github.com/SayAMDYES/pubg-queue/internal/service"
+)
+
+type AdminAPI struct {
+	db   *sql.DB
+	cfg  *config.Config
+	auth *middleware.AuthMiddleware
+}
+
+func NewAdminAPI(db *sql.DB, cfg *config.Config, auth *middleware.AuthMiddleware) *AdminAPI {
+	return &AdminAPI{db: db, cfg: cfg, auth: auth}
+}
+
+// LoginPost 管理员登录
+func (a *AdminAPI) LoginPost(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+
+	ip := getClientIP(r)
+	bans := a.auth.GetBanManager()
+
+	if bans.IsBanned(ip) {
+		Error(w, http.StatusTooManyRequests, "登录失败次数过多，请24小时后再试。")
+		return
+	}
+
+	if req.Username != config.AdminUsername {
+		bans.RecordFailure(ip)
+		Error(w, http.StatusUnauthorized, "用户名或密码错误")
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(a.cfg.AdminPassHash), []byte(req.Password)); err != nil {
+		bans.RecordFailure(ip)
+		Error(w, http.StatusUnauthorized, "用户名或密码错误")
+		return
+	}
+
+	bans.ClearFailures(ip)
+
+	if err := middleware.SaveAdminSession(w, a.db, a.cfg, req.Username); err != nil {
+		Error(w, http.StatusInternalServerError, "session error")
+		return
+	}
+	Success(w, map[string]string{"username": req.Username})
+}
+
+// LogoutPost 管理员登出
+func (a *AdminAPI) LogoutPost(w http.ResponseWriter, r *http.Request) {
+	middleware.DeleteSession(w, r, a.db, a.cfg)
+	Success(w, nil)
+}
+
+// CheckSession 检查管理员登录状态
+func (a *AdminAPI) CheckSession(w http.ResponseWriter, r *http.Request) {
+	Success(w, map[string]bool{"loggedIn": true})
+}
+
+// Dashboard 活动列表
+func (a *AdminAPI) Dashboard(w http.ResponseWriter, r *http.Request) {
+	type EventRow struct {
+		ID              int64  `json:"id"`
+		EventDate       string `json:"eventDate"`
+		Open            bool   `json:"open"`
+		TeamCount       int    `json:"teamCount"`
+		Note            string `json:"note"`
+		StartTime       string `json:"startTime"`
+		EndTime         string `json:"endTime"`
+		ActualStart     string `json:"actualStart"`
+		ActualEnd       string `json:"actualEnd"`
+		CreatedAt       string `json:"createdAt"`
+		UpdatedAt       string `json:"updatedAt"`
+		RegisteredCount int    `json:"registeredCount"`
+		WaitlistCount   int    `json:"waitlistCount"`
+	}
+
+	rows, err := a.db.Query(`
+		SELECT e.id, e.event_date, e.open, e.team_count, COALESCE(e.note,''),
+			COALESCE(e.start_time,''), COALESCE(e.end_time,''),
+			COALESCE(e.actual_start,''), COALESCE(e.actual_end,''),
+			e.created_at, e.updated_at,
+			(SELECT COUNT(*) FROM registrations WHERE event_id=e.id AND status='assigned') as reg_count,
+			(SELECT COUNT(*) FROM registrations WHERE event_id=e.id AND status='waitlist') as wait_count
+		FROM events e ORDER BY e.event_date DESC
+	`)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+	defer rows.Close()
+
+	events := make([]EventRow, 0)
+	for rows.Next() {
+		var ev EventRow
+		var openInt int
+		if err := rows.Scan(&ev.ID, &ev.EventDate, &openInt, &ev.TeamCount, &ev.Note,
+			&ev.StartTime, &ev.EndTime, &ev.ActualStart, &ev.ActualEnd,
+			&ev.CreatedAt, &ev.UpdatedAt,
+			&ev.RegisteredCount, &ev.WaitlistCount); err != nil {
+			continue
+		}
+		ev.Open = openInt == 1
+		events = append(events, ev)
+	}
+
+	Success(w, events)
+}
+
+// CreateEvent 创建活动
+func (a *AdminAPI) CreateEvent(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		EventDate   string `json:"eventDate"`
+		TeamCount   int    `json:"teamCount"`
+		Note        string `json:"note"`
+		StartTime   string `json:"startTime"`
+		EndTime     string `json:"endTime"`
+		ActualStart string `json:"actualStart"`
+		ActualEnd   string `json:"actualEnd"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+
+	if !validateDate(req.EventDate) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+	if req.TeamCount < 1 {
+		req.TeamCount = 2
+	}
+
+	_, err := a.db.Exec(
+		`INSERT INTO events (event_date, open, team_count, note, start_time, end_time, actual_start, actual_end)
+		 VALUES (?,1,?,?,?,?,?,?)
+		 ON CONFLICT(event_date) DO UPDATE SET
+		   team_count=excluded.team_count, note=excluded.note,
+		   start_time=excluded.start_time, end_time=excluded.end_time,
+		   actual_start=excluded.actual_start, actual_end=excluded.actual_end,
+		   updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+		req.EventDate, req.TeamCount, req.Note, nullStr(req.StartTime), nullStr(req.EndTime),
+		nullStr(req.ActualStart), nullStr(req.ActualEnd),
+	)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "创建活动失败: "+err.Error())
+		return
+	}
+	Success(w, map[string]string{"eventDate": req.EventDate})
+}
+
+// UpdateEvent 更新活动
+func (a *AdminAPI) UpdateEvent(w http.ResponseWriter, r *http.Request) {
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	var req struct {
+		TeamCount   int    `json:"teamCount"`
+		Note        string `json:"note"`
+		StartTime   string `json:"startTime"`
+		EndTime     string `json:"endTime"`
+		ActualStart string `json:"actualStart"`
+		ActualEnd   string `json:"actualEnd"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+
+	if req.TeamCount < 1 {
+		req.TeamCount = 2
+	}
+
+	_, err := a.db.Exec(
+		`UPDATE events SET team_count=?, note=?, start_time=?, end_time=?,
+		 actual_start=?, actual_end=?,
+		 updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE event_date=?`,
+		req.TeamCount, req.Note, nullStr(req.StartTime), nullStr(req.EndTime),
+		nullStr(req.ActualStart), nullStr(req.ActualEnd), date,
+	)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "更新失败")
+		return
+	}
+	Success(w, nil)
+}
+
+// ToggleEvent 开关活动
+func (a *AdminAPI) ToggleEvent(w http.ResponseWriter, r *http.Request) {
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	_, err := a.db.Exec(
+		`UPDATE events SET open = CASE WHEN open=1 THEN 0 ELSE 1 END, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE event_date=?`,
+		date,
+	)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "操作失败")
+		return
+	}
+	Success(w, nil)
+}
+
+// ClearEvent 清空活动
+func (a *AdminAPI) ClearEvent(w http.ResponseWriter, r *http.Request) {
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	var eventID int64
+	if err := a.db.QueryRow(`SELECT id FROM events WHERE event_date=?`, date).Scan(&eventID); err != nil {
+		Error(w, http.StatusNotFound, "活动不存在")
+		return
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+	if _, err = tx.Exec(`DELETE FROM event_rankings WHERE event_id=?`, eventID); err != nil {
+		tx.Rollback()
+		Error(w, http.StatusInternalServerError, "清空失败")
+		return
+	}
+	_, err = tx.Exec(
+		`UPDATE registrations SET status='cancelled', cancelled_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE event_id=? AND status != 'cancelled'`,
+		eventID,
+	)
+	if err != nil {
+		tx.Rollback()
+		Error(w, http.StatusInternalServerError, "清空失败")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		Error(w, http.StatusInternalServerError, "提交失败")
+		return
+	}
+	Success(w, nil)
+}
+
+// DeleteEvent 删除活动
+func (a *AdminAPI) DeleteEvent(w http.ResponseWriter, r *http.Request) {
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+
+	var eventID int64
+	if err := tx.QueryRow(`SELECT id FROM events WHERE event_date=?`, date).Scan(&eventID); err != nil {
+		tx.Rollback()
+		Error(w, http.StatusNotFound, "活动不存在")
+		return
+	}
+
+	if _, err := tx.Exec(`DELETE FROM event_rankings WHERE event_id=?`, eventID); err != nil {
+		tx.Rollback()
+		Error(w, http.StatusInternalServerError, "删除失败")
+		return
+	}
+	if _, err := tx.Exec(`DELETE FROM registrations WHERE event_id=?`, eventID); err != nil {
+		tx.Rollback()
+		Error(w, http.StatusInternalServerError, "删除失败")
+		return
+	}
+	if _, err := tx.Exec(`DELETE FROM events WHERE id=?`, eventID); err != nil {
+		tx.Rollback()
+		Error(w, http.StatusInternalServerError, "删除失败")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		Error(w, http.StatusInternalServerError, "提交失败")
+		return
+	}
+	Success(w, nil)
+}
+
+// EventDetail 管理后台查看某活动报名详情
+func (a *AdminAPI) EventDetail(w http.ResponseWriter, r *http.Request) {
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	ev, err := getEventByDate(a.db, date)
+	if err == sql.ErrNoRows {
+		Error(w, http.StatusNotFound, "活动不存在")
+		return
+	}
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+
+	type RegRow struct {
+		ID        int64  `json:"id"`
+		Name      string `json:"name"`
+		Phone     string `json:"phone"`
+		Status    string `json:"status"`
+		TeamNo    string `json:"teamNo"`
+		SlotNo    string `json:"slotNo"`
+		CreatedAt string `json:"createdAt"`
+	}
+
+	rows, err := a.db.Query(
+		`SELECT id, name, phone, status, COALESCE(team_no,''), COALESCE(slot_no,''), created_at FROM registrations WHERE event_id=? AND status != 'cancelled' ORDER BY created_at`,
+		ev.ID,
+	)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+	defer rows.Close()
+
+	regs := make([]RegRow, 0)
+	for rows.Next() {
+		var reg RegRow
+		if err := rows.Scan(&reg.ID, &reg.Name, &reg.Phone, &reg.Status, &reg.TeamNo, &reg.SlotNo, &reg.CreatedAt); err != nil {
+			continue
+		}
+		regs = append(regs, reg)
+	}
+
+	// Build team grid
+	type SlotInfoAdmin struct {
+		TeamNo int    `json:"teamNo"`
+		SlotNo int    `json:"slotNo"`
+		Name   string `json:"name"`
+		Phone  string `json:"phone"`
+		Filled bool   `json:"filled"`
+	}
+	capacity := ev.TeamCount * 4
+	slots := make([]SlotInfoAdmin, capacity)
+	for t := 0; t < ev.TeamCount; t++ {
+		for s := 0; s < 4; s++ {
+			slots[t*4+s] = SlotInfoAdmin{TeamNo: t + 1, SlotNo: s + 1}
+		}
+	}
+	type WaitEntry struct {
+		Name  string `json:"name"`
+		Phone string `json:"phone"`
+	}
+	waitlist := make([]WaitEntry, 0)
+	for _, reg := range regs {
+		if reg.Status == "assigned" && reg.TeamNo != "" && reg.SlotNo != "" {
+			tn, _ := strconv.Atoi(reg.TeamNo)
+			sn, _ := strconv.Atoi(reg.SlotNo)
+			if tn > 0 && sn > 0 {
+				idx := (tn-1)*4 + (sn - 1)
+				if idx >= 0 && idx < len(slots) {
+					slots[idx].Name = reg.Name
+					slots[idx].Phone = reg.Phone
+					slots[idx].Filled = true
+				}
+			}
+		} else if reg.Status == "waitlist" {
+			waitlist = append(waitlist, WaitEntry{Name: reg.Name, Phone: reg.Phone})
+		}
+	}
+
+	type AdminTeamInfo struct {
+		TeamNo int             `json:"teamNo"`
+		Slots  []SlotInfoAdmin `json:"slots"`
+	}
+	teams := make([]AdminTeamInfo, 0)
+	for t := 0; t < ev.TeamCount; t++ {
+		teams = append(teams, AdminTeamInfo{TeamNo: t + 1, Slots: slots[t*4 : (t+1)*4]})
+	}
+
+	result := map[string]interface{}{
+		"event": EventInfo{
+			ID:          ev.ID,
+			EventDate:   ev.EventDate,
+			Open:        ev.Open,
+			TeamCount:   ev.TeamCount,
+			Note:        ev.Note,
+			StartTime:   ev.StartTime,
+			EndTime:     ev.EndTime,
+			ActualStart: ev.ActualStart,
+			ActualEnd:   ev.ActualEnd,
+		},
+		"registrations": regs,
+		"teams":         teams,
+		"waitlist":      waitlist,
+		"pubgEnabled":   a.cfg.PUBGAPIKey != "",
+	}
+
+	if a.cfg.PUBGAPIKey != "" {
+		rankings, _ := service.GetEventRankings(a.db, ev.ID)
+		if rankings == nil {
+			rankings = []service.RankEntry{}
+		}
+		result["rankings"] = rankings
+	}
+
+	Success(w, result)
+}
+
+// ExportCSV 导出 CSV
+func (a *AdminAPI) ExportCSV(w http.ResponseWriter, r *http.Request) {
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	var eventID int64
+	if err := a.db.QueryRow(`SELECT id FROM events WHERE event_date=?`, date).Scan(&eventID); err != nil {
+		Error(w, http.StatusNotFound, "活动不存在")
+		return
+	}
+
+	rows, err := a.db.Query(
+		`SELECT name, phone, status, COALESCE(team_no,''), COALESCE(slot_no,''), created_at FROM registrations WHERE event_id=? ORDER BY created_at`,
+		eventID,
+	)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+	defer rows.Close()
+
+	filename := fmt.Sprintf("event_%s_%s.csv", date, time.Now().Format("20060102"))
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+
+	cw := csv.NewWriter(w)
+	cw.Write([]string{"姓名", "手机号", "状态", "队伍", "位置", "报名时间"})
+	for rows.Next() {
+		var name, phone, status, teamNo, slotNo, createdAt string
+		if err := rows.Scan(&name, &phone, &status, &teamNo, &slotNo, &createdAt); err != nil {
+			continue
+		}
+		cw.Write([]string{name, phone, status, teamNo, slotNo, createdAt})
+	}
+	cw.Flush()
+}
+
+// RefreshRankings 刷新 PUBG 排名
+func (a *AdminAPI) RefreshRankings(w http.ResponseWriter, r *http.Request) {
+	if a.cfg.PUBGAPIKey == "" {
+		Error(w, http.StatusForbidden, "PUBG API Key 未配置")
+		return
+	}
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	var eventID int64
+	var actualStart, actualEnd string
+	err := a.db.QueryRow(
+		`SELECT id, COALESCE(actual_start,''), COALESCE(actual_end,'') FROM events WHERE event_date=?`,
+		date,
+	).Scan(&eventID, &actualStart, &actualEnd)
+	if err != nil {
+		Error(w, http.StatusNotFound, "活动不存在")
+		return
+	}
+
+	client := service.NewPUBGClient(a.cfg.PUBGAPIKey, a.cfg.PUBGShard)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[PUBG] RefreshEventRankings panic for event %d: %v", eventID, r)
+			}
+		}()
+		if _, err := service.RefreshEventRankings(a.db, client, eventID, actualStart, actualEnd); err != nil {
+			log.Printf("[PUBG] RefreshEventRankings error for event %d: %v", eventID, err)
+		}
+	}()
+
+	Success(w, map[string]string{"msg": "ranking_refresh_started"})
+}
+
+// ListUsers 用户列表
+func (a *AdminAPI) ListUsers(w http.ResponseWriter, r *http.Request) {
+	type UserRow struct {
+		ID        int64    `json:"id"`
+		Phone     string   `json:"phone"`
+		CreatedAt string   `json:"createdAt"`
+		GameNames []string `json:"gameNames"`
+		RegCount  int      `json:"regCount"`
+	}
+
+	rows, err := a.db.Query(`
+		SELECT u.id, u.phone, u.created_at,
+		       (SELECT COUNT(*) FROM registrations WHERE user_id=u.id AND status != 'cancelled') as reg_count
+		FROM users u ORDER BY u.created_at DESC
+	`)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+
+	users := make([]UserRow, 0)
+	for rows.Next() {
+		var u UserRow
+		if err := rows.Scan(&u.ID, &u.Phone, &u.CreatedAt, &u.RegCount); err != nil {
+			continue
+		}
+		u.GameNames = []string{}
+		users = append(users, u)
+	}
+	rows.Close()
+
+	for i := range users {
+		gnRows, err := a.db.Query(`SELECT game_name FROM user_game_names WHERE user_id=? ORDER BY last_used_at DESC LIMIT 5`, users[i].ID)
+		if err == nil {
+			for gnRows.Next() {
+				var gn string
+				if gnRows.Scan(&gn) == nil {
+					users[i].GameNames = append(users[i].GameNames, gn)
+				}
+			}
+			gnRows.Close()
+		}
+	}
+
+	Success(w, users)
+}
+
+// GetUser 获取单个用户详情
+func (a *AdminAPI) GetUser(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	uid, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || uid <= 0 {
+		Error(w, http.StatusBadRequest, "无效的用户 ID")
+		return
+	}
+
+	type UserDetail struct {
+		ID        int64    `json:"id"`
+		Phone     string   `json:"phone"`
+		CreatedAt string   `json:"createdAt"`
+		GameNames []string `json:"gameNames"`
+	}
+	var u UserDetail
+	err = a.db.QueryRow(`SELECT id, phone, created_at FROM users WHERE id=?`, uid).
+		Scan(&u.ID, &u.Phone, &u.CreatedAt)
+	if err == sql.ErrNoRows {
+		Error(w, http.StatusNotFound, "用户不存在")
+		return
+	}
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+
+	u.GameNames = []string{}
+	gnRows, err := a.db.Query(`SELECT game_name FROM user_game_names WHERE user_id=? ORDER BY last_used_at DESC`, uid)
+	if err == nil {
+		for gnRows.Next() {
+			var gn string
+			if gnRows.Scan(&gn) == nil {
+				u.GameNames = append(u.GameNames, gn)
+			}
+		}
+		gnRows.Close()
+	}
+
+	type RegHistory struct {
+		EventDate string `json:"eventDate"`
+		Name      string `json:"name"`
+		Status    string `json:"status"`
+		CreatedAt string `json:"createdAt"`
+	}
+	regHistory := make([]RegHistory, 0)
+	histRows, err := a.db.Query(`
+		SELECT e.event_date, r.name, r.status, r.created_at
+		FROM registrations r JOIN events e ON e.id=r.event_id
+		WHERE r.user_id=? ORDER BY r.created_at DESC LIMIT 20
+	`, uid)
+	if err == nil {
+		for histRows.Next() {
+			var h RegHistory
+			if histRows.Scan(&h.EventDate, &h.Name, &h.Status, &h.CreatedAt) == nil {
+				regHistory = append(regHistory, h)
+			}
+		}
+		histRows.Close()
+	}
+
+	Success(w, map[string]interface{}{
+		"user":       u,
+		"regHistory": regHistory,
+	})
+}
+
+// UpdateUser 更新用户
+func (a *AdminAPI) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	uid, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || uid <= 0 {
+		Error(w, http.StatusBadRequest, "无效的用户 ID")
+		return
+	}
+
+	var req struct {
+		Phone          string   `json:"phone"`
+		DeleteGameNames []string `json:"deleteGameNames"`
+		NewGameName    string   `json:"newGameName"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+
+	if !service.ValidatePhone(req.Phone) {
+		Error(w, http.StatusBadRequest, "手机号格式错误")
+		return
+	}
+
+	var existID int64
+	checkErr := a.db.QueryRow(`SELECT id FROM users WHERE phone=? AND id != ?`, req.Phone, uid).Scan(&existID)
+	if checkErr == nil {
+		Error(w, http.StatusBadRequest, "手机号已被其他用户使用")
+		return
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.Exec(
+		`UPDATE users SET phone=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`,
+		req.Phone, uid,
+	); err != nil {
+		Error(w, http.StatusInternalServerError, "更新失败")
+		return
+	}
+	tx.Exec(`UPDATE registrations SET phone=? WHERE user_id=? AND status != 'cancelled'`, req.Phone, uid)
+
+	for _, gn := range req.DeleteGameNames {
+		tx.Exec(`DELETE FROM user_game_names WHERE user_id=? AND game_name=?`, uid, gn)
+	}
+	if req.NewGameName != "" && service.ValidateName(req.NewGameName) {
+		tx.Exec(`
+			INSERT INTO user_game_names (user_id, game_name, used_count, last_used_at)
+			VALUES (?, ?, 1, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+			ON CONFLICT(user_id, game_name) DO UPDATE SET
+				last_used_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+		`, uid, req.NewGameName)
+	}
+
+	if err = tx.Commit(); err != nil {
+		Error(w, http.StatusInternalServerError, "提交失败")
+		return
+	}
+	Success(w, nil)
+}
+
+// DeleteUser 删除用户
+func (a *AdminAPI) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	uid, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || uid <= 0 {
+		Error(w, http.StatusBadRequest, "无效的用户 ID")
+		return
+	}
+
+	var phone string
+	if err := a.db.QueryRow(`SELECT phone FROM users WHERE id=?`, uid).Scan(&phone); err != nil {
+		Error(w, http.StatusNotFound, "用户不存在")
+		return
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+	if _, err := tx.Exec(`UPDATE registrations SET status='cancelled', cancelled_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND status != 'cancelled'`, uid); err != nil {
+		tx.Rollback()
+		Error(w, http.StatusInternalServerError, "取消报名失败")
+		return
+	}
+	if _, err := tx.Exec(`DELETE FROM user_game_names WHERE user_id=?`, uid); err != nil {
+		tx.Rollback()
+		Error(w, http.StatusInternalServerError, "删除游戏名失败")
+		return
+	}
+	tx.Exec(`DELETE FROM login_bans WHERE ban_key=?`, phone)
+	if _, err := tx.Exec(`DELETE FROM users WHERE id=?`, uid); err != nil {
+		tx.Rollback()
+		Error(w, http.StatusInternalServerError, "删除用户失败")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		Error(w, http.StatusInternalServerError, "提交失败")
+		return
+	}
+	Success(w, nil)
+}
+
+// ResetUserPassword 重置用户密码
+func (a *AdminAPI) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	uid, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || uid <= 0 {
+		Error(w, http.StatusBadRequest, "无效的用户 ID")
+		return
+	}
+
+	var req struct {
+		NewPassword string `json:"newPassword"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+
+	if len(req.NewPassword) < 6 {
+		Error(w, http.StatusBadRequest, "密码至少6位")
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "哈希失败")
+		return
+	}
+
+	if _, err := a.db.Exec(
+		`UPDATE users SET password_hash=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`,
+		string(hash), uid,
+	); err != nil {
+		Error(w, http.StatusInternalServerError, "更新密码失败")
+		return
+	}
+
+	var phone string
+	if a.db.QueryRow(`SELECT phone FROM users WHERE id=?`, uid).Scan(&phone) == nil {
+		a.db.Exec(`DELETE FROM login_bans WHERE ban_key=?`, phone)
+	}
+
+	Success(w, map[string]string{"msg": "password_reset"})
+}
+
+func nullStr(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}

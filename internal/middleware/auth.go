@@ -226,6 +226,16 @@ func SaveUserSession(w http.ResponseWriter, db *sql.DB, cfg *config.Config, user
 	return saveSession(w, db, cfg, &sessionData{UserID: userID, UserPhone: phone})
 }
 
+// SaveAdminSession 为管理员保存 session。
+func SaveAdminSession(w http.ResponseWriter, db *sql.DB, cfg *config.Config, username string) error {
+	return saveSession(w, db, cfg, &sessionData{AdminUser: username})
+}
+
+// DeleteSession 删除 session。
+func DeleteSession(w http.ResponseWriter, r *http.Request, db *sql.DB, cfg *config.Config) {
+	deleteSession(w, r, db, cfg)
+}
+
 // ─── Network helpers ──────────────────────────────────────────────────────────
 
 func getClientIP(r *http.Request) string {
@@ -252,6 +262,20 @@ func (a *AuthMiddleware) RequireAdmin(next http.Handler) http.Handler {
 		sess, _, err := getSession(r, a.db, a.cfg)
 		if err != nil || sess == nil || sess.AdminUser == "" {
 			http.Redirect(w, r, "/admin/login", http.StatusFound)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// RequireAdminAPI 返回 401 JSON 而非重定向（用于 API 路由）。
+func (a *AuthMiddleware) RequireAdminAPI(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sess, _, err := getSession(r, a.db, a.cfg)
+		if err != nil || sess == nil || sess.AdminUser == "" {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"code":401,"msg":"未登录"}`))
 			return
 		}
 		next.ServeHTTP(w, r)
