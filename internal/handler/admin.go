@@ -242,7 +242,11 @@ func (a *AdminHandlers) ClearEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 清空战绩排名
-	tx.Exec(`DELETE FROM event_rankings WHERE event_id=?`, eventID)
+	if _, err = tx.Exec(`DELETE FROM event_rankings WHERE event_id=?`, eventID); err != nil {
+		tx.Rollback()
+		renderError(w, r, http.StatusInternalServerError, "clear failed")
+		return
+	}
 	// 取消所有报名
 	_, err = tx.Exec(
 		`UPDATE registrations SET status='cancelled', cancelled_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE event_id=? AND status != 'cancelled'`,
@@ -280,8 +284,16 @@ func (a *AdminHandlers) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx.Exec(`DELETE FROM event_rankings WHERE event_id=?`, eventID)
-	tx.Exec(`DELETE FROM registrations WHERE event_id=?`, eventID)
+	if _, err := tx.Exec(`DELETE FROM event_rankings WHERE event_id=?`, eventID); err != nil {
+		tx.Rollback()
+		renderError(w, r, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	if _, err := tx.Exec(`DELETE FROM registrations WHERE event_id=?`, eventID); err != nil {
+		tx.Rollback()
+		renderError(w, r, http.StatusInternalServerError, "delete failed")
+		return
+	}
 	if _, err := tx.Exec(`DELETE FROM events WHERE id=?`, eventID); err != nil {
 		tx.Rollback()
 		renderError(w, r, http.StatusInternalServerError, "delete failed")
@@ -710,9 +722,18 @@ func (a *AdminHandlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		renderError(w, r, http.StatusInternalServerError, "database error")
 		return
 	}
-	tx.Exec(`UPDATE registrations SET status='cancelled', cancelled_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND status != 'cancelled'`, uid)
-	tx.Exec(`DELETE FROM user_game_names WHERE user_id=?`, uid)
-	tx.Exec(`DELETE FROM login_bans WHERE ban_key=?`, phone)
+	if _, err := tx.Exec(`UPDATE registrations SET status='cancelled', cancelled_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND status != 'cancelled'`, uid); err != nil {
+		tx.Rollback()
+		renderError(w, r, http.StatusInternalServerError, "cancel registrations failed")
+		return
+	}
+	if _, err := tx.Exec(`DELETE FROM user_game_names WHERE user_id=?`, uid); err != nil {
+		tx.Rollback()
+		renderError(w, r, http.StatusInternalServerError, "delete game names failed")
+		return
+	}
+	// 清除封禁记录（可选操作，失败不影响主流程）
+	tx.Exec(`DELETE FROM login_bans WHERE ban_key=?`, phone) //nolint:errcheck
 	if _, err := tx.Exec(`DELETE FROM users WHERE id=?`, uid); err != nil {
 		tx.Rollback()
 		renderError(w, r, http.StatusInternalServerError, "delete user failed")
