@@ -12,7 +12,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # ── 检测是否在中国大陆 ──────────────────────────────────────────────────────
+# 可通过环境变量 IN_CHINA=1 或 IN_CHINA=0 直接指定，跳过网络探测
 detect_china() {
+    if [ -n "${IN_CHINA:-}" ]; then
+        echo "${IN_CHINA}"
+        return
+    fi
     # 尝试连接 Google；3 秒超时，失败则认为在中国大陆
     if curl -s --connect-timeout 3 -m 5 -o /dev/null https://www.google.com 2>/dev/null; then
         echo "0"
@@ -75,11 +80,16 @@ if [ -n "$GOMODCACHE" ]; then
     GO_VERSION=$(go version | awk '{print $3}')
     echo "  已找到本地 Go：$GO_VERSION"
     echo "  模块缓存目录：$GOMODCACHE"
-    echo "  正在生成 vendor 目录（将跳过容器内模块下载）..."
-    go mod vendor
+    # 若 vendor/modules.txt 已存在且比 go.sum 新，说明 vendor 目录是最新的，跳过重新生成
+    if [ -f "vendor/modules.txt" ] && [ "vendor/modules.txt" -nt "go.sum" ]; then
+        echo "  vendor 目录已是最新，跳过重新生成 ✓"
+    else
+        echo "  正在生成 vendor 目录（将跳过容器内模块下载）..."
+        go mod vendor
+        VENDOR_CREATED=1
+        echo "  vendor 目录已生成 ✓"
+    fi
     USE_VENDOR=1
-    VENDOR_CREATED=1
-    echo "  vendor 目录已生成 ✓"
 else
     echo "  未找到本地 Go 环境，构建时将在容器内下载模块"
     echo "  （后续构建将由 Docker BuildKit 缓存加速）"
