@@ -182,6 +182,7 @@ main.container { padding-top: 1.75rem; padding-bottom: 2.5rem; flex: 1; }
 .form-control,
 .form-group input[type="text"],
 .form-group input[type="date"],
+.form-group input[type="datetime-local"],
 .form-group input[type="number"],
 .form-group input[type="password"],
 .form-group input[type="tel"],
@@ -492,7 +493,17 @@ main.container { padding-top: 1.75rem; padding-bottom: 2.5rem; flex: 1; }
 .mb-1         { margin-bottom: 0.5rem; }
 .mb-2         { margin-bottom: 1rem; }
 .gap-sm       { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-.code-block   { font-family: 'Courier New', Courier, monospace; }
+.admin-search-input {
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+  outline: none;
+  width: 220px;
+}
+.admin-search-input:focus { border-color: var(--gold); }
 
 /* ─── 响应式 ─────────────────────────────────────────────── */
 @media (max-width: 680px) {

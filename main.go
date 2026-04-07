@@ -1,22 +1,27 @@
 package main
 
 import (
+	"embed"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/gorilla/csrf"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/SayAMDYES/pubg-queue/internal/api"
 	"github.com/SayAMDYES/pubg-queue/internal/config"
 	idb "github.com/SayAMDYES/pubg-queue/internal/db"
-	"github.com/SayAMDYES/pubg-queue/internal/handler"
 	"github.com/SayAMDYES/pubg-queue/internal/middleware"
 )
+
+//go:embed frontend/dist/*
+var frontendFS embed.FS
 
 func main() {
 	adminPass := flag.String("admin-pass", "", "管理员明文密码（启动时哈希化，不写磁盘）")
@@ -32,7 +37,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("bcrypt hash failed: %v", err)
 	}
-	// 清除明文，后续只使用哈希
 	*adminPass = ""
 
 	cfg := config.Load()
@@ -60,49 +64,61 @@ func main() {
 	r.Use(chimiddleware.Recoverer)
 	r.Use(middleware.SecurityHeaders)
 
-	csrfSecret := []byte(cfg.CSRFSecret)
-	padded := make([]byte, 32)
-	copy(padded, csrfSecret)
-	csrfMiddleware := csrf.Protect(
-		padded,
-		csrf.Secure(cfg.SecureCookie),
-		csrf.SameSite(csrf.SameSiteLaxMode),
-	)
-	r.Use(csrfMiddleware)
-
 	generalRL := middleware.NewRateLimiter(100)
 	registerRL := middleware.NewRateLimiter(cfg.RateLimitRegister)
 	leaveRL := middleware.NewRateLimiter(cfg.RateLimitLeave)
 
 	r.Use(generalRL.RateLimit)
 
-	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	// API 路由
+	r.Route("/api", func(r chi.Router) {
+		r.Get("/calendar", api.CalendarHandler(db))
+		r.Get("/events/{date}", api.EventDetailHandler(db, cfg))
+		r.With(registerRL.RateLimit).Post("/events/{date}/register", api.RegisterHandler(db, cfg, bans))
+		r.With(leaveRL.RateLimit).Post("/events/{date}/leave", api.LeaveHandler(db, cfg, bans))
+		r.With(leaveRL.RateLimit).Post("/leave", api.LegacyLeaveHandler(db))
 
-	r.Get("/", handler.CalendarHandler(db))
-	r.Get("/date/{date}", handler.EventDetailHandler(db, cfg))
-	r.With(registerRL.RateLimit).Post("/date/{date}/register", handler.RegisterHandler(db, cfg, bans))
-	r.With(leaveRL.RateLimit).Post("/date/{date}/leave", handler.LeaveHandler(db, cfg, bans))
-	// 向后兼容：旧的6位码离队入口保留
-	r.With(leaveRL.RateLimit).Post("/leave", handler.LegacyLeaveHandler(db))
+		adminH := api.NewAdminAPI(db, cfg, authMW)
+		r.Route("/admin", func(r chi.Router) {
+			r.Post("/login", adminH.LoginPost)
+			r.With(authMW.RequireAdminAPI).Post("/logout", adminH.LogoutPost)
+			r.With(authMW.RequireAdminAPI).Get("/check", adminH.CheckSession)
+			r.With(authMW.RequireAdminAPI).Get("/events", adminH.Dashboard)
+			r.With(authMW.RequireAdminAPI).Post("/events", adminH.CreateEvent)
+			r.With(authMW.RequireAdminAPI).Get("/events/{date}", adminH.EventDetail)
+			r.With(authMW.RequireAdminAPI).Put("/events/{date}", adminH.UpdateEvent)
+			r.With(authMW.RequireAdminAPI).Post("/events/{date}/toggle", adminH.ToggleEvent)
+			r.With(authMW.RequireAdminAPI).Post("/events/{date}/clear", adminH.ClearEvent)
+			r.With(authMW.RequireAdminAPI).Delete("/events/{date}", adminH.DeleteEvent)
+			r.With(authMW.RequireAdminAPI).Post("/events/{date}/refresh-rankings", adminH.RefreshRankings)
+			r.With(authMW.RequireAdminAPI).Get("/events/{date}/export", adminH.ExportCSV)
+			r.With(authMW.RequireAdminAPI).Get("/users", adminH.ListUsers)
+			r.With(authMW.RequireAdminAPI).Get("/users/{id}", adminH.GetUser)
+			r.With(authMW.RequireAdminAPI).Put("/users/{id}", adminH.UpdateUser)
+			r.With(authMW.RequireAdminAPI).Delete("/users/{id}", adminH.DeleteUser)
+			r.With(authMW.RequireAdminAPI).Post("/users/{id}/reset-password", adminH.ResetUserPassword)
+		})
+	})
 
-	adminH := handler.NewAdminHandlers(db, cfg, authMW)
-	r.Route("/admin", func(r chi.Router) {
-		r.Get("/login", adminH.LoginGet)
-		r.Post("/login", adminH.LoginPost)
-		r.With(authMW.RequireAdmin).Post("/logout", adminH.LogoutPost)
-		r.With(authMW.RequireAdmin).Get("/", adminH.Dashboard)
-		r.With(authMW.RequireAdmin).Get("/events/new", adminH.NewEventForm)
-		r.With(authMW.RequireAdmin).Post("/events", adminH.CreateEvent)
-		r.With(authMW.RequireAdmin).Get("/events/{date}/edit", adminH.EditEventForm)
-		r.With(authMW.RequireAdmin).Post("/events/{date}", adminH.UpdateEvent)
-		r.With(authMW.RequireAdmin).Post("/events/{date}/toggle", adminH.ToggleEvent)
-		r.With(authMW.RequireAdmin).Post("/events/{date}/clear", adminH.ClearEvent)
-		r.With(authMW.RequireAdmin).Post("/events/{date}/refresh-rankings", adminH.RefreshRankings)
-		r.With(authMW.RequireAdmin).Get("/events/{date}/export", adminH.ExportCSV)
-		r.With(authMW.RequireAdmin).Get("/events/{date}", adminH.EventDetail)
-		r.With(authMW.RequireAdmin).Get("/users", adminH.ListUsers)
-		r.With(authMW.RequireAdmin).Get("/users/{id}/edit", adminH.EditUserForm)
-		r.With(authMW.RequireAdmin).Post("/users/{id}", adminH.UpdateUser)
+	// 前端静态资源（SPA）
+	distFS, err := fs.Sub(frontendFS, "frontend/dist")
+	if err != nil {
+		log.Fatalf("frontend fs: %v", err)
+	}
+	fileServer := http.FileServer(http.FS(distFS))
+
+	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+		if _, err := fs.Stat(distFS, path); err == nil {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		// SPA 回退
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
 	})
 
 	addr := fmt.Sprintf(":%s", cfg.Port)

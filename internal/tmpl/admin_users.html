@@ -5,6 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ .Title }} - 趴布鸡排队</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐔</text></svg>">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -20,9 +21,14 @@
 <main class="container">
 <div class="admin-bar">
   <h2>👤 账号管理</h2>
+  <div style="display:flex;align-items:center;gap:0.5rem">
+    <input type="text" id="userSearch" placeholder="搜索手机号或游戏名…"
+           class="admin-search-input"
+           oninput="filterUsers(this.value)">
+  </div>
 </div>
 <div class="table-wrap">
-<table class="data-table">
+<table class="data-table" id="usersTable">
   <thead>
     <tr>
       <th>ID</th>
@@ -35,7 +41,7 @@
   </thead>
   <tbody>
   {{ range .Users }}
-  <tr>
+  <tr data-search="{{ .Phone }} {{ range .GameNames }}{{ . }} {{ end }}">
     <td class="text-sm text-muted">{{ .ID }}</td>
     <td><code style="font-size:0.88rem">{{ .Phone }}</code></td>
     <td>
@@ -46,6 +52,11 @@
     <td class="text-sm text-muted">{{ .CreatedAt }}</td>
     <td class="actions-cell">
       <a href="/admin/users/{{ .ID }}/edit" class="btn btn-outline btn-sm">编辑</a>
+      <form method="POST" action="/admin/users/{{ .ID }}/delete" style="display:inline"
+            onsubmit="return confirm('确认删除用户 {{ .Phone }}？其所有报名记录将被取消，不可恢复！')">
+        <input type="hidden" name="gorilla.csrf.Token" value="{{ $.CSRFToken }}">
+        <button type="submit" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)">删除</button>
+      </form>
     </td>
   </tr>
   {{ else }}
@@ -58,6 +69,16 @@
 <footer class="site-footer">
   <div class="container"><p>趴布鸡排队系统 &copy; 2024</p></div>
 </footer>
+<script>
+function filterUsers(q) {
+  q = q.trim().toLowerCase();
+  var rows = document.querySelectorAll('#usersTable tbody tr[data-search]');
+  rows.forEach(function(row) {
+    var val = row.getAttribute('data-search').toLowerCase();
+    row.style.display = (!q || val.indexOf(q) >= 0) ? '' : 'none';
+  });
+}
+</script>
 </body>
 </html>
 {{ end }}

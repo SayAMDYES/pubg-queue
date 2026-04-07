@@ -5,6 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ .Title }} - 趴布鸡排队</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐔</text></svg>">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -25,11 +26,21 @@
   <div class="alert alert-error">
     {{ if eq .ErrMsg "invalid_phone" }}手机号格式不正确，请输入中国大陆手机号
     {{ else if eq .ErrMsg "phone_taken" }}该手机号已被其他账号使用
+    {{ else if eq .ErrMsg "password_too_short" }}新密码不能少于 6 位
     {{ else }}操作失败：{{ .ErrMsg }}
     {{ end }}
   </div>
   {{ end }}
 
+  {{ if .SuccessMsg }}
+  <div class="alert alert-success">
+    {{ if eq .SuccessMsg "password_reset" }}✓ 密码已成功重置
+    {{ else }}✓ 操作成功
+    {{ end }}
+  </div>
+  {{ end }}
+
+  {{/* ── 基本信息 / 游戏名 ── */}}
   <form method="POST" action="/admin/users/{{ .User.ID }}">
     <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
 
@@ -64,6 +75,53 @@
       <a href="/admin/users" class="btn btn-secondary">取消</a>
     </div>
   </form>
+
+  {{/* ── 重置密码 ── */}}
+  <div style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--border)">
+    <h3 style="font-size:0.95rem;font-weight:700;margin-bottom:1rem;color:var(--text-secondary)">🔑 重置密码</h3>
+    <form method="POST" action="/admin/users/{{ .User.ID }}/reset-password">
+      <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+      <div class="form-group">
+        <label class="form-label">新密码（不少于 6 位）</label>
+        <input type="password" name="new_password" required minlength="6" placeholder="输入新密码">
+      </div>
+      <button type="submit" class="btn btn-secondary btn-sm">重置密码</button>
+    </form>
+  </div>
+
+  {{/* ── 报名历史 ── */}}
+  {{ if .RegHistory }}
+  <div style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--border)">
+    <h3 style="font-size:0.95rem;font-weight:700;margin-bottom:1rem;color:var(--text-secondary)">📋 报名历史（最近 20 条）</h3>
+    <div class="table-wrap">
+    <table class="data-table" style="min-width:0">
+      <thead>
+        <tr>
+          <th>活动日期</th>
+          <th>游戏名</th>
+          <th>状态</th>
+          <th>报名时间</th>
+        </tr>
+      </thead>
+      <tbody>
+      {{ range .RegHistory }}
+      <tr>
+        <td><a href="/admin/events/{{ .EventDate }}" style="font-size:0.85rem">{{ .EventDate }}</a></td>
+        <td style="font-size:0.85rem;font-weight:600">{{ .Name }}</td>
+        <td>
+          {{ if eq .Status "assigned" }}<span class="badge badge-open">已入队</span>
+          {{ else if eq .Status "waitlist" }}<span class="badge badge-full">候补</span>
+          {{ else }}<span class="badge badge-closed">{{ .Status }}</span>{{ end }}
+        </td>
+        <td class="text-sm text-muted">{{ .CreatedAt }}</td>
+      </tr>
+      {{ end }}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {{ end }}
+
 </div>
 </main>
 <footer class="site-footer">
