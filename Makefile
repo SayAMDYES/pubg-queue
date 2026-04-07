@@ -1,4 +1,4 @@
-.PHONY: build run test clean hash tidy frontend build-all
+.PHONY: build run test clean hash tidy frontend build-all docker-build
 
 # 仅构建后端（需先构建前端）
 build:
@@ -27,3 +27,7 @@ hash:
 
 tidy:
 	go mod tidy
+
+# 构建 Docker 镜像（自动检测地区、本地 Go/npm 环境，注入合适镜像源）
+docker-build:
+	bash docker-build.sh
