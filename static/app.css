@@ -182,6 +182,7 @@ main.container { padding-top: 1.75rem; padding-bottom: 2.5rem; flex: 1; }
 .form-control,
 .form-group input[type="text"],
 .form-group input[type="date"],
+.form-group input[type="datetime-local"],
 .form-group input[type="number"],
 .form-group input[type="password"],
 .form-group input[type="tel"],

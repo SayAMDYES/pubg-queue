@@ -5,6 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>管理后台 - 趴布鸡排队</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐔</text></svg>">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -56,9 +57,13 @@
         <input type="hidden" name="gorilla.csrf.Token" value="{{ $.CSRFToken }}">
         <button type="submit" class="btn btn-sm btn-secondary">{{ if .Open }}关闭{{ else }}开放{{ end }}</button>
       </form>
-      <form method="POST" action="/admin/events/{{ .EventDate }}/clear" style="display:inline" onsubmit="return confirm('确认清空所有报名？')">
+      <form method="POST" action="/admin/events/{{ .EventDate }}/clear" style="display:inline" onsubmit="return confirm('确认清空所有报名？此操作不可撤销。')">
         <input type="hidden" name="gorilla.csrf.Token" value="{{ $.CSRFToken }}">
         <button type="submit" class="btn btn-sm btn-danger">清空</button>
+      </form>
+      <form method="POST" action="/admin/events/{{ .EventDate }}/delete" style="display:inline" onsubmit="return confirm('确认删除活动 {{ .EventDate }}？将同时删除所有报名记录，不可恢复！')">
+        <input type="hidden" name="gorilla.csrf.Token" value="{{ $.CSRFToken }}">
+        <button type="submit" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)">删除</button>
       </form>
       <a href="/admin/events/{{ .EventDate }}/export" class="btn btn-sm btn-outline">CSV</a>
       <a href="/date/{{ .EventDate }}" class="btn btn-sm btn-outline" target="_blank">预览</a>

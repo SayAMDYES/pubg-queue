@@ -5,6 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ .Title }} - 趴布鸡排队</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐔</text></svg>">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -30,15 +31,22 @@
     </form>
     {{ end }}
     <form method="POST" action="/admin/events/{{ .Event.EventDate }}/clear" style="display:inline"
-          onsubmit="return confirm('确认清空所有报名？')">
+          onsubmit="return confirm('确认清空所有报名？此操作不可撤销。')">
       <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
       <button type="submit" class="btn btn-sm btn-danger">清空报名</button>
+    </form>
+    <form method="POST" action="/admin/events/{{ .Event.EventDate }}/delete" style="display:inline"
+          onsubmit="return confirm('确认删除活动 {{ .Event.EventDate }}？将同时删除所有报名记录，不可恢复！')">
+      <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+      <button type="submit" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)">删除活动</button>
     </form>
   </div>
 </div>
 
 {{ if eq .Msg "ranking_refresh_started" }}
 <div class="alert alert-warning" style="margin-bottom:1rem">⏳ 战绩刷新已在后台启动，请稍候片刻后刷新页面查看结果。</div>
+{{ else if eq .Msg "cleared" }}
+<div class="alert alert-success" style="margin-bottom:1rem">✓ 所有报名已清空。</div>
 {{ end }}
 
 <div class="event-meta" style="margin-bottom:1.5rem">

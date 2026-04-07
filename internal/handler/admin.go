@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
 	"github.com/SayAMDYES/pubg-queue/internal/config"
 	"github.com/SayAMDYES/pubg-queue/internal/middleware"
 	"github.com/SayAMDYES/pubg-queue/internal/model"
@@ -235,12 +236,59 @@ func (a *AdminHandlers) ClearEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := a.db.Exec(
+	tx, err := a.db.Begin()
+	if err != nil {
+		renderError(w, r, http.StatusInternalServerError, "database error")
+		return
+	}
+	// 清空战绩排名
+	tx.Exec(`DELETE FROM event_rankings WHERE event_id=?`, eventID)
+	// 取消所有报名
+	_, err = tx.Exec(
 		`UPDATE registrations SET status='cancelled', cancelled_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE event_id=? AND status != 'cancelled'`,
 		eventID,
 	)
 	if err != nil {
+		tx.Rollback()
 		renderError(w, r, http.StatusInternalServerError, "clear failed")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		renderError(w, r, http.StatusInternalServerError, "commit failed")
+		return
+	}
+	http.Redirect(w, r, "/admin/events/"+date+"?msg=cleared", http.StatusFound)
+}
+
+func (a *AdminHandlers) DeleteEvent(w http.ResponseWriter, r *http.Request) {
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		renderError(w, r, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		renderError(w, r, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	var eventID int64
+	if err := tx.QueryRow(`SELECT id FROM events WHERE event_date=?`, date).Scan(&eventID); err != nil {
+		tx.Rollback()
+		renderError(w, r, http.StatusNotFound, "event not found")
+		return
+	}
+
+	tx.Exec(`DELETE FROM event_rankings WHERE event_id=?`, eventID)
+	tx.Exec(`DELETE FROM registrations WHERE event_id=?`, eventID)
+	if _, err := tx.Exec(`DELETE FROM events WHERE id=?`, eventID); err != nil {
+		tx.Rollback()
+		renderError(w, r, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		renderError(w, r, http.StatusInternalServerError, "commit failed")
 		return
 	}
 	http.Redirect(w, r, "/admin", http.StatusFound)
@@ -534,11 +582,35 @@ func (a *AdminHandlers) EditUserForm(w http.ResponseWriter, r *http.Request) {
 		gnRows.Close()
 	}
 
+	type RegHistory struct {
+		EventDate string
+		Name      string
+		Status    string
+		CreatedAt string
+	}
+	var regHistory []RegHistory
+	histRows, err := a.db.Query(`
+		SELECT e.event_date, r.name, r.status, r.created_at
+		FROM registrations r JOIN events e ON e.id=r.event_id
+		WHERE r.user_id=? ORDER BY r.created_at DESC LIMIT 20
+	`, uid)
+	if err == nil {
+		for histRows.Next() {
+			var h RegHistory
+			if histRows.Scan(&h.EventDate, &h.Name, &h.Status, &h.CreatedAt) == nil {
+				regHistory = append(regHistory, h)
+			}
+		}
+		histRows.Close()
+	}
+
 	data := map[string]interface{}{
-		"Title":     "编辑用户",
-		"User":      u,
-		"ErrMsg":    r.URL.Query().Get("err"),
-		"CSRFToken": csrf.Token(r),
+		"Title":      "编辑用户",
+		"User":       u,
+		"ErrMsg":     r.URL.Query().Get("err"),
+		"SuccessMsg": r.URL.Query().Get("ok"),
+		"RegHistory": regHistory,
+		"CSRFToken":  csrf.Token(r),
 	}
 	if err := tmpl.Render(w, "admin_user_edit.html", data); err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)
@@ -616,4 +688,77 @@ func nullStr(s string) interface{} {
 		return nil
 	}
 	return s
+}
+
+// DeleteUser 删除指定用户（取消其活跃报名，清除游戏昵称，删除账号）。
+func (a *AdminHandlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	uid, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || uid <= 0 {
+		renderError(w, r, http.StatusBadRequest, "无效的用户 ID")
+		return
+	}
+
+	var phone string
+	if err := a.db.QueryRow(`SELECT phone FROM users WHERE id=?`, uid).Scan(&phone); err != nil {
+		renderError(w, r, http.StatusNotFound, "用户不存在")
+		return
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		renderError(w, r, http.StatusInternalServerError, "database error")
+		return
+	}
+	tx.Exec(`UPDATE registrations SET status='cancelled', cancelled_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND status != 'cancelled'`, uid)
+	tx.Exec(`DELETE FROM user_game_names WHERE user_id=?`, uid)
+	tx.Exec(`DELETE FROM login_bans WHERE ban_key=?`, phone)
+	if _, err := tx.Exec(`DELETE FROM users WHERE id=?`, uid); err != nil {
+		tx.Rollback()
+		renderError(w, r, http.StatusInternalServerError, "delete user failed")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		renderError(w, r, http.StatusInternalServerError, "commit failed")
+		return
+	}
+	http.Redirect(w, r, "/admin/users", http.StatusFound)
+}
+
+// ResetUserPassword 重置指定用户的密码。
+func (a *AdminHandlers) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	uid, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || uid <= 0 {
+		renderError(w, r, http.StatusBadRequest, "无效的用户 ID")
+		return
+	}
+
+	newPass := r.FormValue("new_password")
+	if len(newPass) < 6 {
+		http.Redirect(w, r, fmt.Sprintf("/admin/users/%d/edit?err=password_too_short", uid), http.StatusFound)
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPass), bcrypt.DefaultCost)
+	if err != nil {
+		renderError(w, r, http.StatusInternalServerError, "hash password failed")
+		return
+	}
+
+	if _, err := a.db.Exec(
+		`UPDATE users SET password_hash=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`,
+		string(hash), uid,
+	); err != nil {
+		renderError(w, r, http.StatusInternalServerError, "update password failed")
+		return
+	}
+
+	// 清除该用户的登录封禁记录
+	var phone string
+	if a.db.QueryRow(`SELECT phone FROM users WHERE id=?`, uid).Scan(&phone) == nil {
+		a.db.Exec(`DELETE FROM login_bans WHERE ban_key=?`, phone)
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/users/%d/edit?ok=password_reset", uid), http.StatusFound)
 }
