@@ -570,8 +570,9 @@ func PlayerStatsHandler(cfg *config.Config) http.HandlerFunc {
 			Error(w, http.StatusBadRequest, "缺少玩家名")
 			return
 		}
+		seasonID := r.URL.Query().Get("season")
 		client := service.NewPUBGClient(cfg.PUBGAPIKey, cfg.PUBGShard)
-		overview, err := client.GetPlayerStatsOverview(name)
+		overview, err := client.GetPlayerStatsOverview(name, seasonID)
 		if err != nil {
 			if err.Error() == "player_not_found" || err.Error() == "not_found" {
 				Error(w, http.StatusNotFound, "玩家不存在")
@@ -582,6 +583,24 @@ func PlayerStatsHandler(cfg *config.Config) http.HandlerFunc {
 			return
 		}
 		Success(w, overview)
+	}
+}
+
+// SeasonsHandler 返回所有可用赛季列表
+func SeasonsHandler(cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if cfg.PUBGAPIKey == "" {
+			Error(w, http.StatusServiceUnavailable, "PUBG API 未配置")
+			return
+		}
+		client := service.NewPUBGClient(cfg.PUBGAPIKey, cfg.PUBGShard)
+		seasons, err := client.GetAllSeasons()
+		if err != nil {
+			log.Printf("[stats] GetAllSeasons: %v", err)
+			Error(w, http.StatusInternalServerError, "查询失败")
+			return
+		}
+		Success(w, seasons)
 	}
 }
 

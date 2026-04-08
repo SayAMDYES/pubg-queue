@@ -1,13 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button, Input, Typography, Space, Spin, Card, Statistic, Row, Col,
-  Table, Tag, message, Modal, Descriptions, Divider, Select
+  Table, Tag, message, Modal, Descriptions, Divider, Select, Pagination
 } from 'antd';
 import { ArrowLeftOutlined, SearchOutlined, TrophyOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
 import {
-  getPlayerStats, getMatchDetail, userLogout,
-  type PlayerStatsOverview, type MatchDetail, type MatchParticipantDetail
+  getPlayerStats, getMatchDetail, getSeasons, userLogout,
+  type PlayerStatsOverview, type MatchDetail, type MatchParticipantDetail, type SeasonInfo
 } from '../api';
 import { useUserMe } from '../hooks/useUserMe';
 
@@ -51,6 +51,11 @@ function formatKm(meters: number): string {
   return `${(meters / 1000).toFixed(1)}km`;
 }
 
+function seasonLabel(id: string): string {
+  const parts = id.split('.');
+  return parts[parts.length - 1] || id;
+}
+
 interface MatchRow {
   matchId: string;
   playerName: string;
@@ -66,7 +71,21 @@ export default function StatsPage() {
   const [stats, setStats] = useState<PlayerStatsOverview | null>(null);
   const [matchRows, setMatchRows] = useState<MatchRow[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<MatchDetail | null>(null);
+  const [seasons, setSeasons] = useState<SeasonInfo[]>([]);
+  const [selectedSeason, setSelectedSeason] = useState<string | undefined>(undefined);
+  const [currentPage, setCurrentPage] = useState(1);
+  const autoLoadedRef = useRef<string>('');
   const { user, refresh: refreshUser } = useUserMe();
+
+  useEffect(() => {
+    getSeasons().then((res) => {
+      setSeasons(res.data);
+      const current = res.data.find((s) => s.isCurrentSeason);
+      if (current) setSelectedSeason(current.id);
+    }).catch(() => {
+      // PUBG API 未配置时忽略错误
+    });
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -78,32 +97,6 @@ export default function StatsPage() {
     }
   };
 
-  const handleSearch = useCallback(async () => {
-    const name = searchName.trim();
-    if (!name) return;
-    setLoading(true);
-    setStats(null);
-    setMatchRows([]);
-    try {
-      const res = await getPlayerStats(name);
-      const data = res.data;
-      setStats(data);
-      // Initialize match rows without details
-      setMatchRows(data.recentMatchIds.map((id) => ({
-        matchId: id,
-        playerName: data.playerName,
-        loading: false,
-        detail: null,
-        error: false,
-      })));
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '查询失败';
-      message.error(msg === '玩家不存在' ? `未找到玩家 "${name}"` : msg);
-    } finally {
-      setLoading(false);
-    }
-  }, [searchName]);
-
   const loadMatchDetail = useCallback(async (matchId: string, playerName: string, index: number) => {
     setMatchRows((prev) => prev.map((r, i) => i === index ? { ...r, loading: true } : r));
     try {
@@ -114,6 +107,63 @@ export default function StatsPage() {
     }
   }, []);
 
+  const handleSearch = useCallback(async () => {
+    const name = searchName.trim();
+    if (!name) return;
+    setLoading(true);
+    setStats(null);
+    setMatchRows([]);
+    setCurrentPage(1);
+    autoLoadedRef.current = '';
+    try {
+      const res = await getPlayerStats(name, selectedSeason);
+      const data = res.data;
+      setStats(data);
+      const rows: MatchRow[] = data.recentMatchIds.map((id) => ({
+        matchId: id,
+        playerName: data.playerName,
+        loading: false,
+        detail: null,
+        error: false,
+      }));
+      setMatchRows(rows);
+      autoLoadedRef.current = data.recentMatchIds[0] ?? '';
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '查询失败';
+      message.error(msg === '玩家不存在' ? `未找到玩家 "${name}"` : msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [searchName, selectedSeason]);
+
+  // 搜索成功后自动依次加载所有对局详情（每 800ms 一场）
+  useEffect(() => {
+    if (matchRows.length === 0) return;
+    if (autoLoadedRef.current !== matchRows[0]?.matchId) return;
+    matchRows.forEach((row, i) => {
+      setTimeout(() => loadMatchDetail(row.matchId, row.playerName, i), i * 800);
+    });
+    // 标记已触发，避免重复
+    autoLoadedRef.current = '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLoadedRef.current]);
+
+  // 统计摘要（基于已加载 detail 的场次）
+  const loadedRows = matchRows.filter((r) => r.detail !== null);
+  const avgDamage = loadedRows.length > 0
+    ? loadedRows.reduce((sum, r) => sum + r.detail!.player.damage, 0) / loadedRows.length
+    : 0;
+  const avgKDA = loadedRows.length > 0
+    ? loadedRows.reduce((sum, r) => {
+        const d = r.detail!.player;
+        const deaths = d.survived ? 0 : 1;
+        return sum + (d.kills + d.assists) / Math.max(deaths, 1);
+      }, 0) / loadedRows.length
+    : 0;
+
+  const pageSize = 10;
+  const pagedRows = matchRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   const matchColumns = [
     {
       title: '排名',
@@ -121,11 +171,7 @@ export default function StatsPage() {
       width: 80,
       render: (_: unknown, row: MatchRow) => {
         if (row.loading) return <Spin size="small" />;
-        if (!row.detail) return (
-          <Button size="small" type="link" onClick={() => loadMatchDetail(row.matchId, row.playerName, matchRows.indexOf(row))}>
-            加载
-          </Button>
-        );
+        if (!row.detail) return <Text type="secondary">-</Text>;
         const r = row.detail.playerRank;
         return (
           <div
@@ -230,7 +276,7 @@ export default function StatsPage() {
       <Card style={{ marginBottom: 24 }}>
         {user.loggedIn && user.gameNames.length > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>快速选择我的游戏 ID：</Text>
+            <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>我的游戏 ID：</Text>
             <Space wrap>
               {user.gameNames.map((name) => (
                 <Tag
@@ -245,6 +291,21 @@ export default function StatsPage() {
             </Space>
           </div>
         )}
+        {seasons.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>赛季：</Text>
+            <Select
+              style={{ minWidth: 160 }}
+              size="small"
+              value={selectedSeason}
+              onChange={(val) => setSelectedSeason(val)}
+              options={seasons.map((s) => ({
+                label: seasonLabel(s.id) + (s.isCurrentSeason ? ' (当前)' : ''),
+                value: s.id,
+              }))}
+            />
+          </div>
+        )}
         <Space.Compact style={{ width: '100%' }}>
           <Input
             placeholder="输入 PUBG 游戏名（区分大小写）"
@@ -257,19 +318,6 @@ export default function StatsPage() {
             查询
           </Button>
         </Space.Compact>
-        {user.loggedIn && user.gameNames.length > 0 && (
-          <div style={{ marginTop: 8 }}>
-            <Text type="secondary" style={{ fontSize: 11 }}>或选择：</Text>
-            <Select
-              style={{ minWidth: 160, marginLeft: 8 }}
-              size="small"
-              placeholder="从已绑定游戏名选择"
-              options={user.gameNames.map((n) => ({ label: n, value: n }))}
-              onChange={(val) => setSearchName(val)}
-              value={user.gameNames.includes(searchName) ? searchName : undefined}
-            />
-          </div>
-        )}
       </Card>
 
       {loading && <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>}
@@ -303,26 +351,42 @@ export default function StatsPage() {
           </Card>
 
           {matchRows.length > 0 && (
-            <Card title={`近期对局（${matchRows.length} 场）`} extra={
-              <Button size="small" onClick={() => {
-                matchRows.forEach((row, i) => {
-                  if (!row.detail && !row.loading) {
-                    setTimeout(() => loadMatchDetail(row.matchId, row.playerName, i), i * 800);
-                  }
-                });
-              }}>全部加载</Button>
-            }>
-              <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
-                点击"加载"或"全部加载"获取每场详情（每场约需 1-2 秒）
-              </Text>
-              <Table
-                dataSource={matchRows}
-                columns={matchColumns}
-                rowKey="matchId"
-                pagination={false}
-                size="small"
-              />
-            </Card>
+            <>
+              <Card
+                title={`近 ${matchRows.length} 场统计（已加载 ${loadedRows.length} 场）`}
+                style={{ marginBottom: 16 }}
+              >
+                <Row gutter={[16, 8]}>
+                  <Col xs={12} sm={8}>
+                    <Statistic title="平均伤害" value={Math.round(avgDamage)} />
+                  </Col>
+                  <Col xs={12} sm={8}>
+                    <Statistic title="平均KDA" value={avgKDA.toFixed(2)} />
+                  </Col>
+                </Row>
+              </Card>
+
+              <Card title={`近期对局（${matchRows.length} 场，加载中 ${matchRows.filter(r => r.loading).length} 场）`}>
+                <Table
+                  dataSource={pagedRows}
+                  columns={matchColumns}
+                  rowKey="matchId"
+                  pagination={false}
+                  size="small"
+                />
+                {matchRows.length > pageSize && (
+                  <div style={{ textAlign: 'center', marginTop: 16 }}>
+                    <Pagination
+                      current={currentPage}
+                      pageSize={pageSize}
+                      total={matchRows.length}
+                      onChange={(page) => setCurrentPage(page)}
+                      simple
+                    />
+                  </div>
+                )}
+              </Card>
+            </>
           )}
         </>
       )}

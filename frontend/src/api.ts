@@ -266,6 +266,7 @@ export const userMe = () =>
 export interface PlayerStatsOverview {
   accountId: string;
   playerName: string;
+  seasonId: string;
   matches: number;
   kills: number;
   deaths: number;
@@ -306,8 +307,18 @@ export interface MatchDetail {
   teammates: MatchParticipantDetail[];
 }
 
-export const getPlayerStats = (name: string) =>
-  request.get<unknown, ApiResponse<PlayerStatsOverview>>(`/stats/player/${encodeURIComponent(name)}`);
+export const getPlayerStats = (name: string, season?: string) =>
+  request.get<unknown, ApiResponse<PlayerStatsOverview>>(`/stats/player/${encodeURIComponent(name)}`, {
+    params: season ? { season } : undefined,
+  });
+
+export interface SeasonInfo {
+  id: string;
+  isCurrentSeason: boolean;
+}
+
+export const getSeasons = () =>
+  request.get<unknown, ApiResponse<SeasonInfo[]>>('/stats/seasons');
 
 export const getMatchDetail = (matchId: string, playerName: string) =>
   request.get<unknown, ApiResponse<MatchDetail>>(`/stats/match/${matchId}`, { params: { player: playerName } });

@@ -79,6 +79,7 @@ func main() {
 		r.With(leaveRL.RateLimit).Post("/leave", api.LegacyLeaveHandler(db))
 		r.Get("/stats/player/{name}", api.PlayerStatsHandler(cfg))
 		r.Get("/stats/match/{matchId}", api.MatchDetailHandlerFunc(cfg))
+		r.Get("/stats/seasons", api.SeasonsHandler(cfg))
 
 		// 用户账号（前台登录/登出/查询）
 		r.Post("/user/login", api.UserLoginHandler(db, cfg, bans))

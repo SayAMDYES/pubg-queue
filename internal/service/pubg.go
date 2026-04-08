@@ -549,10 +549,41 @@ func RefreshEventRankings(db *sql.DB, client *PUBGClient, eventID int64, actualS
 
 // ─── Public Stats (前台战绩查询) ──────────────────────────────────────────────
 
+// SeasonInfo holds basic info about a PUBG season.
+type SeasonInfo struct {
+	ID              string `json:"id"`
+	IsCurrentSeason bool   `json:"isCurrentSeason"`
+}
+
+// GetAllSeasons returns all available seasons for the configured shard.
+func (c *PUBGClient) GetAllSeasons() ([]SeasonInfo, error) {
+	path := fmt.Sprintf("/shards/%s/seasons", c.shard)
+	var resp struct {
+		Data []struct {
+			ID         string `json:"id"`
+			Attributes struct {
+				IsCurrentSeason bool `json:"isCurrentSeason"`
+			} `json:"attributes"`
+		} `json:"data"`
+	}
+	if err := c.get(path, &resp); err != nil {
+		return nil, err
+	}
+	seasons := make([]SeasonInfo, 0, len(resp.Data))
+	for _, s := range resp.Data {
+		seasons = append(seasons, SeasonInfo{
+			ID:              s.ID,
+			IsCurrentSeason: s.Attributes.IsCurrentSeason,
+		})
+	}
+	return seasons, nil
+}
+
 // PlayerStatsOverview holds season stats and recent match IDs for frontend display.
 type PlayerStatsOverview struct {
 	AccountID      string   `json:"accountId"`
 	PlayerName     string   `json:"playerName"`
+	SeasonID       string   `json:"seasonId"`
 	Matches        int      `json:"matches"`
 	Kills          int      `json:"kills"`
 	Deaths         int      `json:"deaths"`
@@ -564,17 +595,20 @@ type PlayerStatsOverview struct {
 }
 
 // GetPlayerStatsOverview fetches season stats and recent match IDs for a player.
-func (c *PUBGClient) GetPlayerStatsOverview(playerName string) (*PlayerStatsOverview, error) {
+// If seasonID is empty, the current season is used.
+func (c *PUBGClient) GetPlayerStatsOverview(playerName string, seasonID string) (*PlayerStatsOverview, error) {
 	// Step 1: resolve name → accountId + recent match IDs
 	accountID, matchIDs, err := c.getPlayerAccountIDAndMatches(playerName)
 	if err != nil {
 		return nil, err
 	}
 
-	// Step 2: get current season
-	seasonID, err := c.getCurrentSeasonID()
-	if err != nil {
-		return nil, fmt.Errorf("get current season: %w", err)
+	// Step 2: resolve season
+	if seasonID == "" {
+		seasonID, err = c.getCurrentSeasonID()
+		if err != nil {
+			return nil, fmt.Errorf("get current season: %w", err)
+		}
 	}
 
 	// Step 3: get season stats
@@ -625,6 +659,7 @@ func (c *PUBGClient) GetPlayerStatsOverview(playerName string) (*PlayerStatsOver
 	return &PlayerStatsOverview{
 		AccountID:      accountID,
 		PlayerName:     playerName,
+		SeasonID:       seasonID,
 		Matches:        totalMatches,
 		Kills:          totalKills,
 		Deaths:         totalDeaths,
