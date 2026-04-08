@@ -1,0 +1,27 @@
+# 版本控制
+.git
+.gitignore
+
+# 数据目录
+data/
+
+# 环境变量（含密钥）
+.env
+.env.*
+
+# 前端依赖和产物（前端阶段由 Dockerfile 内部构建，无需来自宿主机）
+frontend/node_modules/
+frontend/dist/
+
+# Go 二进制产物
+pubg-queue
+pubg-queue-*
+*.exe
+*.out
+
+# 日志
+*.log
+
+# 文档（不影响构建，减小上下文体积）
+README.md
+AGENTS.md
