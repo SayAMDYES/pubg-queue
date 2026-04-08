@@ -24,5 +24,5 @@ services:
       - ALLOW_DUPLICATE_NAME=${ALLOW_DUPLICATE_NAME:-false}
       - RATE_LIMIT_REGISTER=${RATE_LIMIT_REGISTER:-5}
       - RATE_LIMIT_LEAVE=${RATE_LIMIT_LEAVE:-5}
-    command: ["./pubg-queue", "--admin-pass", "${ADMIN_PASS}"]
+    command: ["--admin-pass", "${ADMIN_PASS}"]
     restart: unless-stopped
