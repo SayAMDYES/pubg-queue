@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Table, Tag, Form, Input, Button, Select, message, Typography, Space, Spin, Alert, Tooltip, Result } from 'antd';
-import { CopyOutlined, ArrowLeftOutlined, UserAddOutlined, LogoutOutlined } from '@ant-design/icons';
-import { getEventDetail, registerEvent, leaveEvent, type EventDetailData, type RegisterResult, type LeaveResult } from '../api';
+import { Card, Table, Tag, Form, Input, Button, Select, message, Typography, Space, Spin, Alert, Tooltip, Result, Popconfirm } from 'antd';
+import { CopyOutlined, ArrowLeftOutlined, UserAddOutlined, LogoutOutlined, UserOutlined, LoginOutlined } from '@ant-design/icons';
+import { getEventDetail, registerEvent, leaveEvent, userLogout, type EventDetailData, type RegisterResult, type LeaveResult } from '../api';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -23,10 +23,6 @@ export default function EventDetailPage() {
     getEventDetail(date)
       .then((res) => {
         setData(res.data);
-        if (res.data.userPhone) {
-          regForm.setFieldsValue({ phone: res.data.userPhone });
-          leaveForm.setFieldsValue({ phone: res.data.userPhone });
-        }
       })
       .catch(() => message.error('加载失败'))
       .finally(() => setLoading(false));
@@ -34,20 +30,18 @@ export default function EventDetailPage() {
 
   useEffect(() => { load(); }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleRegister = async (values: { phone: string; password: string; name: string }) => {
+  const handleRegister = async (values: { name: string }) => {
     if (!date) return;
     setSubmitting(true);
     try {
-      const res = await registerEvent(date, values);
+      const res = await registerEvent(date, { name: values.name });
       setRegResult(res.data);
       message.success('报名成功！');
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : '报名失败';
       const errorMap: Record<string, string> = {
-        invalid_phone: '手机号格式不正确',
+        not_logged_in: '请先登录后再报名',
         invalid_name: '游戏名格式不正确（1-20字符）',
-        wrong_password: '密码错误',
-        password_too_short: '密码至少6位',
         event_closed: '报名已关闭',
         phone_already_registered: '该手机号已报名',
         name_already_registered: '该游戏名已被使用',
@@ -58,7 +52,22 @@ export default function EventDetailPage() {
     }
   };
 
-  const handleLeave = async (values: { phone: string; password: string }) => {
+  const handleLeaveWithSession = async () => {
+    if (!date) return;
+    setSubmitting(true);
+    try {
+      const res = await leaveEvent(date);
+      setLeaveResult(res.data);
+      message.success('离队成功！');
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : '离队失败';
+      message.error(errMsg === 'registration_not_found' ? '未找到您的报名记录' : errMsg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleLeaveWithPassword = async (values: { phone: string; password: string }) => {
     if (!date) return;
     setSubmitting(true);
     try {
@@ -74,6 +83,16 @@ export default function EventDetailPage() {
       message.error(errorMap[errMsg] || errMsg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await userLogout();
+      message.success('已退出登录');
+      load();
+    } catch {
+      message.error('退出失败');
     }
   };
 
@@ -133,7 +152,7 @@ ${ev.note ? `📝 ${ev.note}\n` : ''}
     );
   }
 
-  const { event: ev, teams, waitlist, gameNames, pubgEnabled } = data;
+  const { event: ev, teams, waitlist, gameNames, pubgEnabled, userLoggedIn, userPhone } = data;
 
   const teamColumns = [
     { title: '位置', dataIndex: 'slotNo', key: 'slotNo', width: 60, render: (_: unknown, __: unknown, idx: number) => idx + 1 },
@@ -168,9 +187,23 @@ ${ev.note ? `📝 ${ev.note}\n` : ''}
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px', background: '#0a0a0a', minHeight: '100vh' }}>
-      <Space style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}>返回日历</Button>
-      </Space>
+        {userLoggedIn ? (
+          <Space>
+            <Text style={{ color: '#999', fontSize: 13 }}><UserOutlined style={{ marginRight: 4 }} />{userPhone}</Text>
+            <Button size="small" icon={<LogoutOutlined />} onClick={handleLogout}>退出</Button>
+          </Space>
+        ) : (
+          <Button
+            size="small"
+            icon={<LoginOutlined />}
+            onClick={() => navigate(`/login?next=/date/${date}`)}
+          >
+            登录 / 注册
+          </Button>
+        )}
+      </div>
 
       <Title level={3} style={{ color: '#f0a500' }}>{ev.eventDate} 活动</Title>
 
@@ -218,46 +251,75 @@ ${ev.note ? `📝 ${ev.note}\n` : ''}
 
       {ev.open && (
         <Card title={<><UserAddOutlined /> 报名</>} style={{ marginBottom: 16 }}>
-          <Form form={regForm} onFinish={handleRegister} layout="vertical">
-            <Form.Item name="phone" label="手机号" rules={[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号' }]}>
-              <Input placeholder="手机号（首次自动注册）" maxLength={11} />
-            </Form.Item>
-            <Form.Item name="password" label="密码" rules={[{ required: true, min: 6, message: '密码至少6位' }]}>
-              <Input.Password placeholder="密码" />
-            </Form.Item>
-            <Form.Item name="name" label="游戏昵称" rules={[{ required: true, message: '请输入游戏昵称' }]}>
-              {gameNames.length > 0 ? (
-                <Select
-                  showSearch
-                  allowClear
-                  placeholder="选择或输入游戏昵称"
-                  options={gameNames.map((n) => ({ label: n, value: n }))}
-                  filterOption={(input, option) => (option?.label ?? '').includes(input)}
-                />
-              ) : (
-                <Input placeholder="游戏昵称" maxLength={20} />
-              )}
-            </Form.Item>
-            <Form.Item>
-              <Button type="primary" htmlType="submit" loading={submitting} block>提交报名</Button>
-            </Form.Item>
-          </Form>
+          {userLoggedIn ? (
+            <>
+              <div style={{ marginBottom: 12, color: '#999', fontSize: 13 }}>
+                报名账号：<Text style={{ color: '#f0a500' }}>{userPhone}</Text>
+              </div>
+              <Form form={regForm} onFinish={handleRegister} layout="vertical">
+                <Form.Item name="name" label="游戏昵称" rules={[{ required: true, message: '请输入游戏昵称' }]}>
+                  {gameNames.length > 0 ? (
+                    <Select
+                      showSearch
+                      allowClear
+                      placeholder="选择或输入游戏昵称"
+                      options={gameNames.map((n) => ({ label: n, value: n }))}
+                      filterOption={(input, option) => (option?.label ?? '').includes(input)}
+                    />
+                  ) : (
+                    <Input placeholder="游戏昵称" maxLength={20} />
+                  )}
+                </Form.Item>
+                <Form.Item>
+                  <Button type="primary" htmlType="submit" loading={submitting} block>提交报名</Button>
+                </Form.Item>
+              </Form>
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
+              <Paragraph type="secondary">报名需要先登录账号</Paragraph>
+              <Button
+                type="primary"
+                icon={<LoginOutlined />}
+                onClick={() => navigate(`/login?next=/date/${date}`)}
+              >
+                登录 / 注册
+              </Button>
+            </div>
+          )}
         </Card>
       )}
 
       <Card title={<><LogoutOutlined /> 离队</>}>
-        <Paragraph type="secondary">输入报名时使用的手机号和密码即可离队，系统会自动递补候补。</Paragraph>
-        <Form form={leaveForm} onFinish={handleLeave} layout="vertical">
-          <Form.Item name="phone" label="手机号" rules={[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号' }]}>
-            <Input placeholder="手机号" maxLength={11} />
-          </Form.Item>
-          <Form.Item name="password" label="密码" rules={[{ required: true, min: 6, message: '密码至少6位' }]}>
-            <Input.Password placeholder="密码" />
-          </Form.Item>
-          <Form.Item>
-            <Button danger htmlType="submit" loading={submitting} block>确认离队</Button>
-          </Form.Item>
-        </Form>
+        {userLoggedIn ? (
+          <>
+            <Paragraph type="secondary">已登录，点击确认即可离队，系统会自动递补候补。</Paragraph>
+            <Popconfirm
+              title="确认离队？"
+              description="离队后将失去当前位置，候补玩家会自动递补。"
+              onConfirm={handleLeaveWithSession}
+              okText="确认离队"
+              cancelText="取消"
+            >
+              <Button danger loading={submitting} block>确认离队</Button>
+            </Popconfirm>
+          </>
+        ) : (
+          <>
+            <Paragraph type="secondary">输入报名时使用的手机号和密码即可离队，系统会自动递补候补。</Paragraph>
+            <Form form={leaveForm} onFinish={handleLeaveWithPassword} layout="vertical">
+              <Form.Item name="phone" label="手机号" rules={[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号' }]}>
+                <Input placeholder="手机号" maxLength={11} />
+              </Form.Item>
+              <Form.Item name="password" label="密码" rules={[{ required: true, min: 6, message: '密码至少6位' }]}>
+                <Input.Password placeholder="密码" />
+              </Form.Item>
+              <Form.Item>
+                <Button danger htmlType="submit" loading={submitting} block>确认离队</Button>
+              </Form.Item>
+            </Form>
+          </>
+        )}
       </Card>
     </div>
   );

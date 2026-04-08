@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Badge, Typography, Space, Spin, message } from 'antd';
-import { LeftOutlined, RightOutlined } from '@ant-design/icons';
-import { getCalendar, type CalendarDay } from '../api';
+import { LeftOutlined, RightOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
+import { getCalendar, userLogout, type CalendarDay } from '../api';
+import { useUserMe } from '../hooks/useUserMe';
 
 const { Title, Text } = Typography;
 
@@ -16,6 +17,7 @@ export default function CalendarPage() {
   const [nextMonth, setNextMonth] = useState('');
   const [firstWeekday, setFirstWeekday] = useState(0);
   const navigate = useNavigate();
+  const { user, refresh: refreshUser } = useUserMe();
 
   const load = useCallback((month?: string) => {
     setLoading(true);
@@ -30,6 +32,16 @@ export default function CalendarPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleLogout = async () => {
+    try {
+      await userLogout();
+      message.success('已退出登录');
+      refreshUser();
+    } catch {
+      message.error('退出失败');
+    }
+  };
 
   const getStatusColor = (day: CalendarDay) => {
     if (!day.hasEvent) return undefined;
@@ -47,6 +59,17 @@ export default function CalendarPage() {
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px', background: '#0a0a0a', minHeight: '100vh' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        {user.loggedIn ? (
+          <Space>
+            <Text style={{ color: '#999', fontSize: 13 }}><UserOutlined style={{ marginRight: 4 }} />{user.phone}</Text>
+            <Button size="small" icon={<LogoutOutlined />} onClick={handleLogout}>退出</Button>
+          </Space>
+        ) : (
+          <Button size="small" icon={<UserOutlined />} onClick={() => navigate('/login')}>登录 / 注册</Button>
+        )}
+      </div>
+
       <Title level={2} style={{ textAlign: 'center', color: '#f0a500' }}>🐔 趴布鸡排队</Title>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>

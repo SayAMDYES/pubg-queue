@@ -2,13 +2,14 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button, Input, Typography, Space, Spin, Card, Statistic, Row, Col,
-  Table, Tag, message, Modal, Descriptions, Divider
+  Table, Tag, message, Modal, Descriptions, Divider, Select
 } from 'antd';
-import { ArrowLeftOutlined, SearchOutlined, TrophyOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, SearchOutlined, TrophyOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
 import {
-  getPlayerStats, getMatchDetail,
+  getPlayerStats, getMatchDetail, userLogout,
   type PlayerStatsOverview, type MatchDetail, type MatchParticipantDetail
 } from '../api';
+import { useUserMe } from '../hooks/useUserMe';
 
 const { Title, Text } = Typography;
 
@@ -65,6 +66,17 @@ export default function StatsPage() {
   const [stats, setStats] = useState<PlayerStatsOverview | null>(null);
   const [matchRows, setMatchRows] = useState<MatchRow[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<MatchDetail | null>(null);
+  const { user, refresh: refreshUser } = useUserMe();
+
+  const handleLogout = async () => {
+    try {
+      await userLogout();
+      message.success('已退出登录');
+      refreshUser();
+    } catch {
+      message.error('退出失败');
+    }
+  };
 
   const handleSearch = useCallback(async () => {
     const name = searchName.trim();
@@ -199,15 +211,40 @@ export default function StatsPage() {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px', background: '#0a0a0a', minHeight: '100vh' }}>
-      <Space style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}>返回</Button>
-      </Space>
+        {user.loggedIn ? (
+          <Space>
+            <Text style={{ color: '#999', fontSize: 13 }}><UserOutlined style={{ marginRight: 4 }} />{user.phone}</Text>
+            <Button size="small" icon={<LogoutOutlined />} onClick={handleLogout}>退出</Button>
+          </Space>
+        ) : (
+          <Button size="small" icon={<UserOutlined />} onClick={() => navigate('/login?next=/stats')}>登录 / 注册</Button>
+        )}
+      </div>
 
       <Title level={3} style={{ color: '#f0a500', textAlign: 'center' }}>
         <TrophyOutlined style={{ marginRight: 8 }} />战绩查询
       </Title>
 
       <Card style={{ marginBottom: 24 }}>
+        {user.loggedIn && user.gameNames.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>快速选择我的游戏 ID：</Text>
+            <Space wrap>
+              {user.gameNames.map((name) => (
+                <Tag
+                  key={name}
+                  color="gold"
+                  style={{ cursor: 'pointer', fontSize: 13 }}
+                  onClick={() => setSearchName(name)}
+                >
+                  {name}
+                </Tag>
+              ))}
+            </Space>
+          </div>
+        )}
         <Space.Compact style={{ width: '100%' }}>
           <Input
             placeholder="输入 PUBG 游戏名（区分大小写）"
@@ -220,6 +257,19 @@ export default function StatsPage() {
             查询
           </Button>
         </Space.Compact>
+        {user.loggedIn && user.gameNames.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <Text type="secondary" style={{ fontSize: 11 }}>或选择：</Text>
+            <Select
+              style={{ minWidth: 160, marginLeft: 8 }}
+              size="small"
+              placeholder="从已绑定游戏名选择"
+              options={user.gameNames.map((n) => ({ label: n, value: n }))}
+              onChange={(val) => setSearchName(val)}
+              value={user.gameNames.includes(searchName) ? searchName : undefined}
+            />
+          </div>
+        )}
       </Card>
 
       {loading && <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>}

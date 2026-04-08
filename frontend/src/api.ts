@@ -88,7 +88,7 @@ export interface RegisterResult {
   eventDate: string;
 }
 
-export const registerEvent = (date: string, data: { phone: string; password: string; name: string }) =>
+export const registerEvent = (date: string, data: { name: string }) =>
   request.post<unknown, ApiResponse<RegisterResult>>(`/events/${date}/register`, data);
 
 // ─── 离队 ─────────────────────────────────────────────────
@@ -98,8 +98,8 @@ export interface LeaveResult {
   eventDate: string;
 }
 
-export const leaveEvent = (date: string, data: { phone: string; password: string }) =>
-  request.post<unknown, ApiResponse<LeaveResult>>(`/events/${date}/leave`, data);
+export const leaveEvent = (date: string, data?: { phone?: string; password?: string }) =>
+  request.post<unknown, ApiResponse<LeaveResult>>(`/events/${date}/leave`, data ?? {});
 
 // ─── 管理员 ───────────────────────────────────────────────
 export const adminLogin = (data: { username: string; password: string }) =>
@@ -243,6 +243,23 @@ export const adminDeleteUser = (id: number) =>
 
 export const adminResetPassword = (id: number, newPassword: string) =>
   request.post<unknown, ApiResponse<{ msg: string }>>(`/admin/users/${id}/reset-password`, { newPassword });
+
+// ─── 用户账号（前台） ──────────────────────────────────────────────────────────
+
+export interface UserMeData {
+  loggedIn: boolean;
+  phone: string;
+  gameNames: string[];
+}
+
+export const userLogin = (data: { phone: string; password: string }) =>
+  request.post<unknown, ApiResponse<UserMeData>>('/user/login', data);
+
+export const userLogout = () =>
+  request.post<unknown, ApiResponse<null>>('/user/logout');
+
+export const userMe = () =>
+  request.get<unknown, ApiResponse<UserMeData>>('/user/me');
 
 // ─── 战绩查询 ─────────────────────────────────────────────────────────────────
 
