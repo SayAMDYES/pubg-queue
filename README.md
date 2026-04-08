@@ -7,19 +7,30 @@
 ### 📅 日历首页
 - 按月展示所有活动日期，高亮今日
 - 每个活动显示：开始时间、报名状态（开放 / 满员 / 已关闭）、已报 / 总容量
+- 右上角展示当前登录状态，支持一键登出
 
 ### 🎮 活动详情页
 - 队伍分组以表格形式清晰展示：位置 / 游戏名 / 手机号（脱敏）
 - 若配置了 PUBG API Key，自动展示每位玩家的赛季总场次和 KD/A
 - 候补名单按报名顺序以表格列出
-- 报名表单：手机号 + 密码（首次自动注册）+ 游戏昵称，支持历史昵称下拉
-- 离队表单：手机号 + 密码一键退出，系统自动递补候补首位
+- **报名表单（需登录）**：
+  - 已登录：仅需填写游戏昵称，支持历史昵称下拉；手机号来自账号，无需重复输入
+  - 未登录：显示登录入口，跳转登录后自动回到活动页
+- **离队**：
+  - 已登录：一键确认离队，无需重复输入手机号/密码
+  - 未登录：手机号 + 密码离队（向后兼容）
 - 📣 一键邀请：生成开黑邀请文案，一键复制到剪贴板
 
 ### 🔒 用户账号体系
-- 以手机号为唯一标识，首次报名自动注册
+- 以手机号为唯一标识，首次登录/报名自动注册
+- 专属前台登录页 `/login`，登录后全站 Session 保持（7天有效）
 - 密码使用 bcrypt 存储，多次错误自动触发 24 小时封禁
-- Session 登录状态保持
+- 每个页面右上角可随时查看登录状态，支持一键登出
+
+### 🏆 战绩查询页
+- 输入任意 PUBG 游戏名查询赛季总览和近期对局
+- **已登录时**：自动展示账号绑定的游戏 ID 快捷选择，点击即可填入搜索框
+- 支持逐场加载详细对局数据
 
 ### 🛡️ 管理后台
 
@@ -64,9 +75,13 @@
 .
 ├── frontend/                # React + AntD 前端 SPA
 │   ├── src/
+│   │   ├── hooks/           # 通用 React Hook
+│   │   │   └── useUserMe.ts # 当前登录用户信息 Hook
 │   │   ├── pages/           # 页面组件
 │   │   │   ├── CalendarPage.tsx
 │   │   │   ├── EventDetailPage.tsx
+│   │   │   ├── StatsPage.tsx
+│   │   │   ├── UserLoginPage.tsx   # 前台用户登录/注册
 │   │   │   └── admin/       # 管理后台页面
 │   │   ├── api.ts           # API 接口定义
 │   │   ├── request.ts       # Axios 封装
@@ -78,7 +93,7 @@
 ├── internal/
 │   ├── api/                 # JSON API 处理器
 │   │   ├── response.go      # 统一响应结构
-│   │   ├── public.go        # 公共 API（日历、活动、报名、离队）
+│   │   ├── public.go        # 公共 API（日历、活动、报名、离队、用户登录）
 │   │   ├── admin.go         # 管理 API
 │   │   └── helpers.go       # 公用辅助函数
 │   ├── config/              # 环境配置
@@ -186,10 +201,20 @@ make build-all
 | 路由 | 方法 | 说明 |
 | --- | --- | --- |
 | `/api/calendar?month=YYYY-MM` | GET | 月历数据 |
-| `/api/events/{date}` | GET | 活动详情 |
-| `/api/events/{date}/register` | POST | 报名 |
-| `/api/events/{date}/leave` | POST | 离队 |
+| `/api/events/{date}` | GET | 活动详情（含当前登录用户信息） |
+| `/api/events/{date}/register` | POST | 报名（需登录 session） |
+| `/api/events/{date}/leave` | POST | 离队（session 或手机号+密码） |
 | `/api/leave` | POST | 旧版 token 离队（向后兼容） |
+| `/api/stats/player/{name}` | GET | 查询玩家战绩 |
+| `/api/stats/match/{matchId}` | GET | 查询单场比赛详情 |
+
+### 用户账号 API
+
+| 路由 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/user/login` | POST | 用户登录（首次自动注册） |
+| `/api/user/logout` | POST | 用户登出 |
+| `/api/user/me` | GET | 查询当前登录用户信息（手机号、游戏名列表） |
 
 ### 管理 API（需 admin session）
 
@@ -219,6 +244,8 @@ make build-all
 | --- | --- |
 | `/` | 日历首页 |
 | `/date/{date}` | 活动详情页 |
+| `/login` | 用户登录 / 注册 |
+| `/stats` | 战绩查询页 |
 | `/admin/login` | 管理员登录 |
 | `/admin` | 管理后台仪表盘 |
 | `/admin/events/new` | 新建活动 |
@@ -233,6 +260,8 @@ make build-all
 - 每队固定 4 个位置，总容量为 `team_count × 4`
 - 满员后报名进入候补，离队时自动按报名时间递补
 - 同一手机号在同一活动中只能报名一次
+- **报名必须先登录**（通过 `/login` 页面或之前的报名/离队操作自动获得 session）
+- 未登录用户可通过手机号+密码方式离队（向后兼容）
 - 登录失败记录 IP 和手机号，连续失败后触发 24 小时封禁
 
 ## 🎯 PUBG 战绩说明

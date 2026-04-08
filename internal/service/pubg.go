@@ -547,6 +547,337 @@ func RefreshEventRankings(db *sql.DB, client *PUBGClient, eventID int64, actualS
 	return entries, nil
 }
 
+// ─── Public Stats (前台战绩查询) ──────────────────────────────────────────────
+
+// PlayerStatsOverview holds season stats and recent match IDs for frontend display.
+type PlayerStatsOverview struct {
+	AccountID      string   `json:"accountId"`
+	PlayerName     string   `json:"playerName"`
+	Matches        int      `json:"matches"`
+	Kills          int      `json:"kills"`
+	Deaths         int      `json:"deaths"`
+	Assists        int      `json:"assists"`
+	TotalDamage    float64  `json:"totalDamage"`
+	AvgDamage      float64  `json:"avgDamage"`
+	KDA            float64  `json:"kda"`
+	RecentMatchIDs []string `json:"recentMatchIds"`
+}
+
+// GetPlayerStatsOverview fetches season stats and recent match IDs for a player.
+func (c *PUBGClient) GetPlayerStatsOverview(playerName string) (*PlayerStatsOverview, error) {
+	// Step 1: resolve name → accountId + recent match IDs
+	accountID, matchIDs, err := c.getPlayerAccountIDAndMatches(playerName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 2: get current season
+	seasonID, err := c.getCurrentSeasonID()
+	if err != nil {
+		return nil, fmt.Errorf("get current season: %w", err)
+	}
+
+	// Step 3: get season stats
+	statsPath := fmt.Sprintf("/shards/%s/players/%s/seasons/%s", c.shard, accountID, seasonID)
+	var statsResp struct {
+		Data struct {
+			Attributes struct {
+				GameModeStats map[string]struct {
+					RoundsPlayed int     `json:"roundsPlayed"`
+					Kills        int     `json:"kills"`
+					Assists      int     `json:"assists"`
+					Losses       int     `json:"losses"`
+					DamageDealt  float64 `json:"damageDealt"`
+				} `json:"gameModeStats"`
+			} `json:"attributes"`
+		} `json:"data"`
+	}
+	if err := c.get(statsPath, &statsResp); err != nil {
+		return nil, fmt.Errorf("get season stats: %w", err)
+	}
+
+	modes := []string{"squad-fpp", "squad", "duo-fpp", "duo", "solo-fpp", "solo"}
+	var totalMatches, totalKills, totalDeaths, totalAssists int
+	var totalDamage float64
+	for _, mode := range modes {
+		if s, ok := statsResp.Data.Attributes.GameModeStats[mode]; ok {
+			totalMatches += s.RoundsPlayed
+			totalKills += s.Kills
+			totalDeaths += s.Losses
+			totalAssists += s.Assists
+			totalDamage += s.DamageDealt
+		}
+	}
+
+	avgDamage := 0.0
+	kda := 0.0
+	if totalMatches > 0 {
+		avgDamage = totalDamage / float64(totalMatches)
+	}
+	kda = float64(totalKills+totalAssists) / math.Max(float64(totalDeaths), 1)
+
+	// Return up to 20 recent match IDs
+	limit := 20
+	if len(matchIDs) < limit {
+		limit = len(matchIDs)
+	}
+
+	return &PlayerStatsOverview{
+		AccountID:      accountID,
+		PlayerName:     playerName,
+		Matches:        totalMatches,
+		Kills:          totalKills,
+		Deaths:         totalDeaths,
+		Assists:        totalAssists,
+		TotalDamage:    totalDamage,
+		AvgDamage:      avgDamage,
+		KDA:            kda,
+		RecentMatchIDs: matchIDs[:limit],
+	}, nil
+}
+
+// MatchParticipantDetail holds detailed stats for one participant in a match.
+type MatchParticipantDetail struct {
+	Name          string  `json:"name"`
+	Kills         int     `json:"kills"`
+	Assists       int     `json:"assists"`
+	DBNOs         int     `json:"dbnos"`
+	Damage        float64 `json:"damage"`
+	Survived      bool    `json:"survived"`
+	TimeSurvived  float64 `json:"timeSurvived"`
+	WalkDistance  float64 `json:"walkDistance"`
+	RideDistance  float64 `json:"rideDistance"`
+	Heals         int     `json:"heals"`
+	Boosts        int     `json:"boosts"`
+	Revives       int     `json:"revives"`
+	HeadshotKills int     `json:"headshotKills"`
+	WinPlace      int     `json:"winPlace"`
+}
+
+// MatchDetail holds detailed information for a single match.
+type MatchDetail struct {
+	MatchID      string                   `json:"matchId"`
+	CreatedAt    time.Time                `json:"createdAt"`
+	GameMode     string                   `json:"gameMode"`
+	MapName      string                   `json:"mapName"`
+	Duration     int                      `json:"duration"`
+	PlayerRank   int                      `json:"playerRank"`
+	TotalTeams   int                      `json:"totalTeams"`
+	TotalPlayers int                      `json:"totalPlayers"`
+	Player       MatchParticipantDetail   `json:"player"`
+	Teammates    []MatchParticipantDetail `json:"teammates"`
+}
+
+// GetMatchDetail fetches detailed stats for a player in a specific match.
+// Finds the player by name in the match participants.
+func (c *PUBGClient) GetMatchDetail(matchID, playerName string) (*MatchDetail, error) {
+	path := fmt.Sprintf("/shards/%s/matches/%s", c.shard, matchID)
+	var matchResp struct {
+		Data struct {
+			ID         string `json:"id"`
+			Attributes struct {
+				CreatedAt string `json:"createdAt"`
+				GameMode  string `json:"gameMode"`
+				MapName   string `json:"mapName"`
+				Duration  int    `json:"duration"`
+			} `json:"attributes"`
+		} `json:"data"`
+		Included []json.RawMessage `json:"included"`
+	}
+	if err := c.get(path, &matchResp); err != nil {
+		return nil, err
+	}
+
+	createdAt, _ := time.Parse(time.RFC3339, matchResp.Data.Attributes.CreatedAt)
+
+	// Parse all participants and rosters
+	type rawParticipant struct {
+		id    string
+		stats struct {
+			PlayerID      string
+			Name          string
+			Kills         int
+			Assists       int
+			DBNOs         int
+			DamageDealt   float64
+			DeathType     string
+			TimeSurvived  float64
+			WalkDistance  float64
+			RideDistance  float64
+			Heals         int
+			Boosts        int
+			Revives       int
+			HeadshotKills int
+			WinPlace      int
+		}
+	}
+	type rawRoster struct {
+		rank           int
+		participantIDs []string
+	}
+
+	participants := map[string]*rawParticipant{}
+	rosters := []rawRoster{}
+
+	for _, raw := range matchResp.Included {
+		var typed struct {
+			Type string `json:"type"`
+			ID   string `json:"id"`
+		}
+		if err := json.Unmarshal(raw, &typed); err != nil {
+			continue
+		}
+
+		switch typed.Type {
+		case "participant":
+			var item struct {
+				ID         string `json:"id"`
+				Attributes struct {
+					Stats struct {
+						PlayerID      string  `json:"playerId"`
+						Name          string  `json:"name"`
+						Kills         int     `json:"kills"`
+						Assists       int     `json:"assists"`
+						DBNOs         int     `json:"DBNOs"`
+						DamageDealt   float64 `json:"damageDealt"`
+						DeathType     string  `json:"deathType"`
+						TimeSurvived  float64 `json:"timeSurvived"`
+						WalkDistance  float64 `json:"walkDistance"`
+						RideDistance  float64 `json:"rideDistance"`
+						Heals         int     `json:"heals"`
+						Boosts        int     `json:"boosts"`
+						Revives       int     `json:"revives"`
+						HeadshotKills int     `json:"headshotKills"`
+						WinPlace      int     `json:"winPlace"`
+					} `json:"stats"`
+				} `json:"attributes"`
+			}
+			if err := json.Unmarshal(raw, &item); err != nil {
+				continue
+			}
+			p := &rawParticipant{id: item.ID}
+			p.stats.PlayerID = item.Attributes.Stats.PlayerID
+			p.stats.Name = item.Attributes.Stats.Name
+			p.stats.Kills = item.Attributes.Stats.Kills
+			p.stats.Assists = item.Attributes.Stats.Assists
+			p.stats.DBNOs = item.Attributes.Stats.DBNOs
+			p.stats.DamageDealt = item.Attributes.Stats.DamageDealt
+			p.stats.DeathType = item.Attributes.Stats.DeathType
+			p.stats.TimeSurvived = item.Attributes.Stats.TimeSurvived
+			p.stats.WalkDistance = item.Attributes.Stats.WalkDistance
+			p.stats.RideDistance = item.Attributes.Stats.RideDistance
+			p.stats.Heals = item.Attributes.Stats.Heals
+			p.stats.Boosts = item.Attributes.Stats.Boosts
+			p.stats.Revives = item.Attributes.Stats.Revives
+			p.stats.HeadshotKills = item.Attributes.Stats.HeadshotKills
+			p.stats.WinPlace = item.Attributes.Stats.WinPlace
+			participants[item.ID] = p
+
+		case "roster":
+			var item struct {
+				Attributes struct {
+					Rank int `json:"rank"`
+				} `json:"attributes"`
+				Relationships struct {
+					Participants struct {
+						Data []struct {
+							ID string `json:"id"`
+						} `json:"data"`
+					} `json:"participants"`
+				} `json:"relationships"`
+			}
+			if err := json.Unmarshal(raw, &item); err != nil {
+				continue
+			}
+			r := rawRoster{rank: item.Attributes.Rank}
+			for _, pd := range item.Relationships.Participants.Data {
+				r.participantIDs = append(r.participantIDs, pd.ID)
+			}
+			rosters = append(rosters, r)
+		}
+	}
+
+	// Find the player and their roster
+	var playerParticipant *rawParticipant
+	for _, p := range participants {
+		if p.stats.Name == playerName {
+			playerParticipant = p
+			break
+		}
+	}
+	if playerParticipant == nil {
+		return nil, fmt.Errorf("player %q not found in match", playerName)
+	}
+
+	playerRank := 0
+	var teammates []MatchParticipantDetail
+	for _, r := range rosters {
+		inRoster := false
+		for _, pid := range r.participantIDs {
+			if pid == playerParticipant.id {
+				inRoster = true
+				break
+			}
+		}
+		if inRoster {
+			playerRank = r.rank
+			for _, pid := range r.participantIDs {
+				if pid == playerParticipant.id {
+					continue
+				}
+				if tm, ok := participants[pid]; ok {
+					teammates = append(teammates, MatchParticipantDetail{
+						Name:          tm.stats.Name,
+						Kills:         tm.stats.Kills,
+						Assists:       tm.stats.Assists,
+						DBNOs:         tm.stats.DBNOs,
+						Damage:        tm.stats.DamageDealt,
+						Survived:      tm.stats.DeathType == "alive",
+						TimeSurvived:  tm.stats.TimeSurvived,
+						WalkDistance:  tm.stats.WalkDistance,
+						RideDistance:  tm.stats.RideDistance,
+						Heals:         tm.stats.Heals,
+						Boosts:        tm.stats.Boosts,
+						Revives:       tm.stats.Revives,
+						HeadshotKills: tm.stats.HeadshotKills,
+						WinPlace:      tm.stats.WinPlace,
+					})
+				}
+			}
+			break
+		}
+	}
+
+	p := playerParticipant
+	return &MatchDetail{
+		MatchID:      matchID,
+		CreatedAt:    createdAt,
+		GameMode:     matchResp.Data.Attributes.GameMode,
+		MapName:      matchResp.Data.Attributes.MapName,
+		Duration:     matchResp.Data.Attributes.Duration,
+		PlayerRank:   playerRank,
+		TotalTeams:   len(rosters),
+		TotalPlayers: len(participants),
+		Player: MatchParticipantDetail{
+			Name:          p.stats.Name,
+			Kills:         p.stats.Kills,
+			Assists:       p.stats.Assists,
+			DBNOs:         p.stats.DBNOs,
+			Damage:        p.stats.DamageDealt,
+			Survived:      p.stats.DeathType == "alive",
+			TimeSurvived:  p.stats.TimeSurvived,
+			WalkDistance:  p.stats.WalkDistance,
+			RideDistance:  p.stats.RideDistance,
+			Heals:         p.stats.Heals,
+			Boosts:        p.stats.Boosts,
+			Revives:       p.stats.Revives,
+			HeadshotKills: p.stats.HeadshotKills,
+			WinPlace:      p.stats.WinPlace,
+		},
+		Teammates: teammates,
+	}, nil
+}
+
 // GetEventRankings reads cached rankings from the DB.
 func GetEventRankings(db *sql.DB, eventID int64) ([]RankEntry, error) {
 	rows, err := db.Query(`

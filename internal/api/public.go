@@ -298,51 +298,33 @@ func EventDetailHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
 	}
 }
 
-// RegisterRequest 报名请求
-type RegisterRequest struct {
+// UserLoginRequest 用户登录/注册请求
+type UserLoginRequest struct {
 	Phone    string `json:"phone"`
 	Password string `json:"password"`
-	Name     string `json:"name"`
 }
 
-// RegisterResponse 报名响应
-type RegisterResponse struct {
-	Name        string `json:"name"`
-	MaskedPhone string `json:"maskedPhone"`
-	Status      string `json:"status"`
-	EventDate   string `json:"eventDate"`
+// UserMeResponse 当前登录用户信息
+type UserMeResponse struct {
+	LoggedIn  bool     `json:"loggedIn"`
+	Phone     string   `json:"phone,omitempty"`
+	GameNames []string `json:"gameNames"`
 }
 
-func RegisterHandler(db *sql.DB, cfg *config.Config, bans interface {
+// UserLoginHandler 用户登录或首次注册
+func UserLoginHandler(db *sql.DB, cfg *config.Config, bans interface {
 	IsBanned(string) bool
 	RecordFailure(string)
 	ClearFailures(string)
 }) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		date := chi.URLParam(r, "date")
-		if !validateDate(date) {
-			Error(w, http.StatusBadRequest, "日期格式不正确")
-			return
-		}
-
-		ev, err := getEventByDate(db, date)
-		if err == sql.ErrNoRows {
-			Error(w, http.StatusNotFound, "该日期没有活动")
-			return
-		}
-		if err != nil {
-			Error(w, http.StatusInternalServerError, "数据库错误")
-			return
-		}
-
-		var req RegisterRequest
+		var req UserLoginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			Error(w, http.StatusBadRequest, "请求格式错误")
 			return
 		}
 
 		ip := getClientIP(r)
-
 		if bans.IsBanned(ip) || (req.Phone != "" && bans.IsBanned(req.Phone)) {
 			Error(w, http.StatusTooManyRequests, "您的账号或网络已被暂时封禁（24小时），请稍后再试。")
 			return
@@ -363,12 +345,88 @@ func RegisterHandler(db *sql.DB, cfg *config.Config, bans interface {
 
 		middleware.SaveUserSession(w, db, cfg, userID, req.Phone)
 
+		gameNames, _ := service.GetUserGameNames(db, userID)
+		if gameNames == nil {
+			gameNames = []string{}
+		}
+		Success(w, UserMeResponse{LoggedIn: true, Phone: req.Phone, GameNames: gameNames})
+	}
+}
+
+// UserLogoutHandler 用户登出
+func UserLogoutHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		middleware.DeleteSession(w, r, db, cfg)
+		Success(w, nil)
+	}
+}
+
+// UserMeHandler 查询当前登录用户信息
+func UserMeHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, phone := middleware.GetUserSession(r, db, cfg)
+		if userID == 0 {
+			Success(w, UserMeResponse{LoggedIn: false, GameNames: []string{}})
+			return
+		}
+		gameNames, _ := service.GetUserGameNames(db, userID)
+		if gameNames == nil {
+			gameNames = []string{}
+		}
+		Success(w, UserMeResponse{LoggedIn: true, Phone: phone, GameNames: gameNames})
+	}
+}
+
+// RegisterRequest 报名请求
+type RegisterRequest struct {
+	Name string `json:"name"`
+}
+
+// RegisterResponse 报名响应
+type RegisterResponse struct {
+	Name        string `json:"name"`
+	MaskedPhone string `json:"maskedPhone"`
+	Status      string `json:"status"`
+	EventDate   string `json:"eventDate"`
+}
+
+func RegisterHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		date := chi.URLParam(r, "date")
+		if !validateDate(date) {
+			Error(w, http.StatusBadRequest, "日期格式不正确")
+			return
+		}
+
+		ev, err := getEventByDate(db, date)
+		if err == sql.ErrNoRows {
+			Error(w, http.StatusNotFound, "该日期没有活动")
+			return
+		}
+		if err != nil {
+			Error(w, http.StatusInternalServerError, "数据库错误")
+			return
+		}
+
+		// 报名必须先登录
+		userID, userPhone := middleware.GetUserSession(r, db, cfg)
+		if userID == 0 {
+			Error(w, http.StatusUnauthorized, "not_logged_in")
+			return
+		}
+
+		var req RegisterRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			Error(w, http.StatusBadRequest, "请求格式错误")
+			return
+		}
+
 		if !service.ValidateName(req.Name) {
 			Error(w, http.StatusBadRequest, "invalid_name")
 			return
 		}
 
-		_, status, _, regErr := service.Register(db, ev.ID, userID, req.Name, req.Phone, cfg.AllowDuplicateName)
+		_, status, _, regErr := service.Register(db, ev.ID, userID, req.Name, userPhone, cfg.AllowDuplicateName)
 		if regErr != nil {
 			Error(w, http.StatusBadRequest, regErr.Error())
 			return
@@ -390,7 +448,7 @@ func RegisterHandler(db *sql.DB, cfg *config.Config, bans interface {
 
 		Success(w, RegisterResponse{
 			Name:        req.Name,
-			MaskedPhone: service.MaskPhone(req.Phone),
+			MaskedPhone: service.MaskPhone(userPhone),
 			Status:      status,
 			EventDate:   date,
 		})
@@ -432,35 +490,47 @@ func LeaveHandler(db *sql.DB, cfg *config.Config, bans interface {
 			return
 		}
 
-		var req LeaveRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			Error(w, http.StatusBadRequest, "请求格式错误")
-			return
-		}
+		var userID int64
+		var userPhone string
 
-		ip := getClientIP(r)
-
-		if bans.IsBanned(ip) || (req.Phone != "" && bans.IsBanned(req.Phone)) {
-			Error(w, http.StatusTooManyRequests, "您的账号或网络已被暂时封禁（24小时），请稍后再试。")
-			return
-		}
-
-		userID, _, authErr := service.GetOrCreateUser(db, req.Phone, req.Password)
-		if authErr != nil {
-			errCode := authErr.Error()
-			if errCode == "wrong_password" {
-				bans.RecordFailure(ip)
-				bans.RecordFailure(req.Phone)
+		// 优先使用 session 鉴权
+		sessionUserID, sessionPhone := middleware.GetUserSession(r, db, cfg)
+		if sessionUserID > 0 {
+			userID = sessionUserID
+			userPhone = sessionPhone
+		} else {
+			// 兼容未登录用户：使用手机号+密码
+			var req LeaveRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				Error(w, http.StatusBadRequest, "请求格式错误")
+				return
 			}
-			Error(w, http.StatusBadRequest, errCode)
-			return
+
+			ip := getClientIP(r)
+			if bans.IsBanned(ip) || (req.Phone != "" && bans.IsBanned(req.Phone)) {
+				Error(w, http.StatusTooManyRequests, "您的账号或网络已被暂时封禁（24小时），请稍后再试。")
+				return
+			}
+
+			uid, _, authErr := service.GetOrCreateUser(db, req.Phone, req.Password)
+			if authErr != nil {
+				errCode := authErr.Error()
+				if errCode == "wrong_password" {
+					bans.RecordFailure(ip)
+					bans.RecordFailure(req.Phone)
+				}
+				Error(w, http.StatusBadRequest, errCode)
+				return
+			}
+			bans.ClearFailures(ip)
+			bans.ClearFailures(req.Phone)
+
+			middleware.SaveUserSession(w, db, cfg, uid, req.Phone)
+			userID = uid
+			userPhone = req.Phone
 		}
-		bans.ClearFailures(ip)
-		bans.ClearFailures(req.Phone)
 
-		middleware.SaveUserSession(w, db, cfg, userID, req.Phone)
-
-		leftName, promotedName, leaveErr := service.LeaveByUser(db, ev.ID, userID, req.Phone)
+		leftName, promotedName, leaveErr := service.LeaveByUser(db, ev.ID, userID, userPhone)
 		if leaveErr != nil {
 			Error(w, http.StatusBadRequest, "registration_not_found")
 			return
@@ -471,6 +541,74 @@ func LeaveHandler(db *sql.DB, cfg *config.Config, bans interface {
 			PromotedName: promotedName,
 			EventDate:    date,
 		})
+	}
+}
+
+// PlayerStatsResponse 战绩查询响应
+type PlayerStatsResponse struct {
+	AccountID      string   `json:"accountId"`
+	PlayerName     string   `json:"playerName"`
+	Matches        int      `json:"matches"`
+	Kills          int      `json:"kills"`
+	Deaths         int      `json:"deaths"`
+	Assists        int      `json:"assists"`
+	TotalDamage    float64  `json:"totalDamage"`
+	AvgDamage      float64  `json:"avgDamage"`
+	KDA            float64  `json:"kda"`
+	RecentMatchIDs []string `json:"recentMatchIds"`
+}
+
+// PlayerStatsHandler 查询玩家战绩（赛季统计 + 近期对局ID）
+func PlayerStatsHandler(cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if cfg.PUBGAPIKey == "" {
+			Error(w, http.StatusServiceUnavailable, "PUBG API 未配置")
+			return
+		}
+		name := chi.URLParam(r, "name")
+		if name == "" {
+			Error(w, http.StatusBadRequest, "缺少玩家名")
+			return
+		}
+		client := service.NewPUBGClient(cfg.PUBGAPIKey, cfg.PUBGShard)
+		overview, err := client.GetPlayerStatsOverview(name)
+		if err != nil {
+			if err.Error() == "player_not_found" || err.Error() == "not_found" {
+				Error(w, http.StatusNotFound, "玩家不存在")
+				return
+			}
+			log.Printf("[stats] GetPlayerStatsOverview %q: %v", name, err)
+			Error(w, http.StatusInternalServerError, "查询失败")
+			return
+		}
+		Success(w, overview)
+	}
+}
+
+// MatchDetailResponse 单场比赛详情响应（与 service.MatchDetail 相同结构）
+type MatchDetailHandler struct{}
+
+// MatchDetailHandlerFunc 查询单场比赛详情
+func MatchDetailHandlerFunc(cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if cfg.PUBGAPIKey == "" {
+			Error(w, http.StatusServiceUnavailable, "PUBG API 未配置")
+			return
+		}
+		matchID := chi.URLParam(r, "matchId")
+		playerName := r.URL.Query().Get("player")
+		if matchID == "" || playerName == "" {
+			Error(w, http.StatusBadRequest, "缺少 matchId 或 player 参数")
+			return
+		}
+		client := service.NewPUBGClient(cfg.PUBGAPIKey, cfg.PUBGShard)
+		detail, err := client.GetMatchDetail(matchID, playerName)
+		if err != nil {
+			log.Printf("[stats] GetMatchDetail %q/%q: %v", matchID, playerName, err)
+			Error(w, http.StatusInternalServerError, "查询失败")
+			return
+		}
+		Success(w, detail)
 	}
 }
 

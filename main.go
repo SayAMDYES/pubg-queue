@@ -74,9 +74,16 @@ func main() {
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/calendar", api.CalendarHandler(db))
 		r.Get("/events/{date}", api.EventDetailHandler(db, cfg))
-		r.With(registerRL.RateLimit).Post("/events/{date}/register", api.RegisterHandler(db, cfg, bans))
+		r.With(registerRL.RateLimit).Post("/events/{date}/register", api.RegisterHandler(db, cfg))
 		r.With(leaveRL.RateLimit).Post("/events/{date}/leave", api.LeaveHandler(db, cfg, bans))
 		r.With(leaveRL.RateLimit).Post("/leave", api.LegacyLeaveHandler(db))
+		r.Get("/stats/player/{name}", api.PlayerStatsHandler(cfg))
+		r.Get("/stats/match/{matchId}", api.MatchDetailHandlerFunc(cfg))
+
+		// 用户账号（前台登录/登出/查询）
+		r.Post("/user/login", api.UserLoginHandler(db, cfg, bans))
+		r.Post("/user/logout", api.UserLogoutHandler(db, cfg))
+		r.Get("/user/me", api.UserMeHandler(db, cfg))
 
 		adminH := api.NewAdminAPI(db, cfg, authMW)
 		r.Route("/admin", func(r chi.Router) {
