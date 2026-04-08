@@ -9,12 +9,12 @@ services:
         - NPM_REGISTRY=${NPM_REGISTRY:-https://registry.npmjs.org}
         - USE_VENDOR=${USE_VENDOR:-0}
     ports:
-      - "${PORT:-8080}:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
     volumes:
       - ./data:/data
     environment:
       - DB_PATH=/data/pubg_queue.db
-      - PORT=8080
+      - PORT=${PORT:-8080}
       - SESSION_SECRET=${SESSION_SECRET}
       - CSRF_SECRET=${CSRF_SECRET}
       - TZ=Asia/Shanghai
