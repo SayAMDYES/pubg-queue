@@ -1,7 +1,13 @@
 version: "3.8"
 services:
   pubg-queue:
-    build: .
+    build:
+      context: .
+      args:
+        - GOPROXY=${GOPROXY:-https://proxy.golang.org,direct}
+        - GONOSUMDB=${GONOSUMDB:-}
+        - NPM_REGISTRY=${NPM_REGISTRY:-https://registry.npmjs.org}
+        - USE_VENDOR=${USE_VENDOR:-0}
     ports:
       - "${PORT:-8080}:8080"
     volumes:
