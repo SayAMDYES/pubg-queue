@@ -77,6 +77,8 @@ func main() {
 		r.With(registerRL.RateLimit).Post("/events/{date}/register", api.RegisterHandler(db, cfg, bans))
 		r.With(leaveRL.RateLimit).Post("/events/{date}/leave", api.LeaveHandler(db, cfg, bans))
 		r.With(leaveRL.RateLimit).Post("/leave", api.LegacyLeaveHandler(db))
+		r.Get("/stats/player/{name}", api.PlayerStatsHandler(cfg))
+		r.Get("/stats/match/{matchId}", api.MatchDetailHandlerFunc(cfg))
 
 		adminH := api.NewAdminAPI(db, cfg, authMW)
 		r.Route("/admin", func(r chi.Router) {

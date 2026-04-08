@@ -1,14 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Form, Input, Button, message, Typography } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
-import { adminLogin } from '../../api';
+import { adminLogin, adminCheck } from '../../api';
 
 const { Title } = Typography;
 
 export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    adminCheck().then((res) => {
+      if (res.data.loggedIn) navigate('/admin');
+    }).catch(() => {/* not logged in, stay on login page */});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onFinish = async (values: { username: string; password: string }) => {
     setLoading(true);

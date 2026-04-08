@@ -3,6 +3,7 @@ import { ConfigProvider, theme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import CalendarPage from './pages/CalendarPage';
 import EventDetailPage from './pages/EventDetailPage';
+import StatsPage from './pages/StatsPage';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminEventForm from './pages/admin/AdminEventForm';
@@ -29,6 +30,7 @@ function App() {
         <Routes>
           <Route path="/" element={<CalendarPage />} />
           <Route path="/date/:date" element={<EventDetailPage />} />
+          <Route path="/stats" element={<StatsPage />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/events/new" element={<AdminEventForm />} />

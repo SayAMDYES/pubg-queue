@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Form, Input, InputNumber, Button, message, Typography, Space, Spin } from 'antd';
+import { DatePicker, TimePicker } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { adminCreateEvent, adminUpdateEvent, adminGetEventDetail } from '../../api';
 
 const { Title } = Typography;
@@ -21,13 +23,13 @@ export default function AdminEventForm() {
         .then((res) => {
           const ev = res.data.event;
           form.setFieldsValue({
-            eventDate: ev.eventDate,
+            eventDate: ev.eventDate ? dayjs(ev.eventDate) : undefined,
             teamCount: ev.teamCount,
             note: ev.note,
-            startTime: ev.startTime,
-            endTime: ev.endTime,
-            actualStart: ev.actualStart,
-            actualEnd: ev.actualEnd,
+            startTime: ev.startTime ? dayjs(ev.startTime, 'HH:mm') : undefined,
+            endTime: ev.endTime ? dayjs(ev.endTime, 'HH:mm') : undefined,
+            actualStart: ev.actualStart ? dayjs(ev.actualStart, 'YYYY-MM-DDTHH:mm') : undefined,
+            actualEnd: ev.actualEnd ? dayjs(ev.actualEnd, 'YYYY-MM-DDTHH:mm') : undefined,
           });
         })
         .catch((err: Error) => {
@@ -39,21 +41,30 @@ export default function AdminEventForm() {
   }, [date, isEdit, form, navigate]);
 
   const onFinish = async (values: {
-    eventDate: string;
+    eventDate: dayjs.Dayjs | null;
     teamCount: number;
     note: string;
-    startTime: string;
-    endTime: string;
-    actualStart: string;
-    actualEnd: string;
+    startTime: dayjs.Dayjs | null;
+    endTime: dayjs.Dayjs | null;
+    actualStart: dayjs.Dayjs | null;
+    actualEnd: dayjs.Dayjs | null;
   }) => {
     setSubmitting(true);
     try {
+      const payload = {
+        eventDate: values.eventDate?.format('YYYY-MM-DD') || '',
+        teamCount: values.teamCount,
+        note: values.note || '',
+        startTime: values.startTime?.format('HH:mm') || '',
+        endTime: values.endTime?.format('HH:mm') || '',
+        actualStart: values.actualStart?.format('YYYY-MM-DDTHH:mm') || '',
+        actualEnd: values.actualEnd?.format('YYYY-MM-DDTHH:mm') || '',
+      };
       if (isEdit && date) {
-        await adminUpdateEvent(date, values);
+        await adminUpdateEvent(date, payload);
         message.success('更新成功');
       } else {
-        await adminCreateEvent(values);
+        await adminCreateEvent(payload);
         message.success('创建成功');
       }
       navigate('/admin');
@@ -78,23 +89,23 @@ export default function AdminEventForm() {
 
       <Card>
         <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ teamCount: 2 }}>
-          <Form.Item name="eventDate" label="活动日期" rules={[{ required: true, pattern: /^\d{4}-\d{2}-\d{2}$/, message: '格式：YYYY-MM-DD' }]}>
-            <Input placeholder="2025-01-01" disabled={isEdit} />
+          <Form.Item name="eventDate" label="活动日期" rules={[{ required: true, message: '请选择活动日期' }]}>
+            <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} disabled={isEdit} />
           </Form.Item>
           <Form.Item name="teamCount" label="队伍数量" rules={[{ required: true }]}>
             <InputNumber min={1} max={100} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="startTime" label="预计开始时间">
-            <Input placeholder="HH:MM（如 20:00）" />
+            <TimePicker format="HH:mm" style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="endTime" label="预计结束时间">
-            <Input placeholder="HH:MM（如 23:00）" />
+            <TimePicker format="HH:mm" style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="actualStart" label="实际开战时间">
-            <Input placeholder="YYYY-MM-DDTHH:MM" />
+            <DatePicker showTime={{ format: 'HH:mm' }} format="YYYY-MM-DDTHH:mm" style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="actualEnd" label="实际结束时间">
-            <Input placeholder="YYYY-MM-DDTHH:MM" />
+            <DatePicker showTime={{ format: 'HH:mm' }} format="YYYY-MM-DDTHH:mm" style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="note" label="备注">
             <Input.TextArea rows={3} placeholder="活动备注（可选）" />

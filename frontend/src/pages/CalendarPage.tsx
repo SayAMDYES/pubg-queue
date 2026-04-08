@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Badge, Typography, Space, Spin } from 'antd';
+import { Button, Badge, Typography, Space, Spin, message } from 'antd';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { getCalendar, type CalendarDay } from '../api';
 
@@ -26,7 +26,7 @@ export default function CalendarPage() {
       setPrevMonth(d.prevMonth);
       setNextMonth(d.nextMonth);
       setFirstWeekday(d.firstWeekday);
-    }).finally(() => setLoading(false));
+    }).catch(() => message.error('加载日历失败')).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -111,7 +111,10 @@ export default function CalendarPage() {
       )}
 
       <div style={{ textAlign: 'center', marginTop: 24 }}>
-        <Button type="link" onClick={() => navigate('/admin/login')}>管理后台</Button>
+        <Space>
+          <Button type="link" onClick={() => navigate('/stats')}>战绩查询</Button>
+          <Button type="link" onClick={() => navigate('/admin')}>管理后台</Button>
+        </Space>
       </div>
     </div>
   );

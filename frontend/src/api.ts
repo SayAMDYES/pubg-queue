@@ -243,3 +243,54 @@ export const adminDeleteUser = (id: number) =>
 
 export const adminResetPassword = (id: number, newPassword: string) =>
   request.post<unknown, ApiResponse<{ msg: string }>>(`/admin/users/${id}/reset-password`, { newPassword });
+
+// ─── 战绩查询 ─────────────────────────────────────────────────────────────────
+
+export interface PlayerStatsOverview {
+  accountId: string;
+  playerName: string;
+  matches: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  totalDamage: number;
+  avgDamage: number;
+  kda: number;
+  recentMatchIds: string[];
+}
+
+export interface MatchParticipantDetail {
+  name: string;
+  kills: number;
+  assists: number;
+  dbnos: number;
+  damage: number;
+  survived: boolean;
+  timeSurvived: number;
+  walkDistance: number;
+  rideDistance: number;
+  heals: number;
+  boosts: number;
+  revives: number;
+  headshotKills: number;
+  winPlace: number;
+}
+
+export interface MatchDetail {
+  matchId: string;
+  createdAt: string;
+  gameMode: string;
+  mapName: string;
+  duration: number;
+  playerRank: number;
+  totalTeams: number;
+  totalPlayers: number;
+  player: MatchParticipantDetail;
+  teammates: MatchParticipantDetail[];
+}
+
+export const getPlayerStats = (name: string) =>
+  request.get<unknown, ApiResponse<PlayerStatsOverview>>(`/stats/player/${encodeURIComponent(name)}`);
+
+export const getMatchDetail = (matchId: string, playerName: string) =>
+  request.get<unknown, ApiResponse<MatchDetail>>(`/stats/match/${matchId}`, { params: { player: playerName } });

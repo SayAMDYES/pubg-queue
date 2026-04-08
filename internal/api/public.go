@@ -474,6 +474,74 @@ func LeaveHandler(db *sql.DB, cfg *config.Config, bans interface {
 	}
 }
 
+// PlayerStatsResponse 战绩查询响应
+type PlayerStatsResponse struct {
+	AccountID      string   `json:"accountId"`
+	PlayerName     string   `json:"playerName"`
+	Matches        int      `json:"matches"`
+	Kills          int      `json:"kills"`
+	Deaths         int      `json:"deaths"`
+	Assists        int      `json:"assists"`
+	TotalDamage    float64  `json:"totalDamage"`
+	AvgDamage      float64  `json:"avgDamage"`
+	KDA            float64  `json:"kda"`
+	RecentMatchIDs []string `json:"recentMatchIds"`
+}
+
+// PlayerStatsHandler 查询玩家战绩（赛季统计 + 近期对局ID）
+func PlayerStatsHandler(cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if cfg.PUBGAPIKey == "" {
+			Error(w, http.StatusServiceUnavailable, "PUBG API 未配置")
+			return
+		}
+		name := chi.URLParam(r, "name")
+		if name == "" {
+			Error(w, http.StatusBadRequest, "缺少玩家名")
+			return
+		}
+		client := service.NewPUBGClient(cfg.PUBGAPIKey, cfg.PUBGShard)
+		overview, err := client.GetPlayerStatsOverview(name)
+		if err != nil {
+			if err.Error() == "player_not_found" || err.Error() == "not_found" {
+				Error(w, http.StatusNotFound, "玩家不存在")
+				return
+			}
+			log.Printf("[stats] GetPlayerStatsOverview %q: %v", name, err)
+			Error(w, http.StatusInternalServerError, "查询失败")
+			return
+		}
+		Success(w, overview)
+	}
+}
+
+// MatchDetailResponse 单场比赛详情响应（与 service.MatchDetail 相同结构）
+type MatchDetailHandler struct{}
+
+// MatchDetailHandlerFunc 查询单场比赛详情
+func MatchDetailHandlerFunc(cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if cfg.PUBGAPIKey == "" {
+			Error(w, http.StatusServiceUnavailable, "PUBG API 未配置")
+			return
+		}
+		matchID := chi.URLParam(r, "matchId")
+		playerName := r.URL.Query().Get("player")
+		if matchID == "" || playerName == "" {
+			Error(w, http.StatusBadRequest, "缺少 matchId 或 player 参数")
+			return
+		}
+		client := service.NewPUBGClient(cfg.PUBGAPIKey, cfg.PUBGShard)
+		detail, err := client.GetMatchDetail(matchID, playerName)
+		if err != nil {
+			log.Printf("[stats] GetMatchDetail %q/%q: %v", matchID, playerName, err)
+			Error(w, http.StatusInternalServerError, "查询失败")
+			return
+		}
+		Success(w, detail)
+	}
+}
+
 // LegacyLeaveHandler 保留旧的6位码离队方式
 func LegacyLeaveHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
