@@ -114,6 +114,21 @@ vim .env
 docker compose up -d --build
 ```
 
+> **中国大陆服务器**：`docker compose up -d` 默认使用官方 `proxy.golang.org`，在大陆可能超时。
+> 有两种解决方式：
+>
+> **方式一（推荐）**：使用智能构建脚本，自动读取主机 `go env GOPROXY`、`npm config get registry`，并支持 vendor 模式完全跳过容器内下载：
+> ```bash
+> ./docker-build.sh --compose -d
+> ```
+>
+> **方式二**：在 `.env` 中设置构建参数后再 `docker compose up -d --build`：
+> ```env
+> GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+> GONOSUMDB=*
+> NPM_REGISTRY=https://registry.npmmirror.com
+> ```
+
 4. 访问 `http://localhost:8080`
 
 **数据持久化**：数据库文件存储在宿主机 `./data/pubg_queue.db`，容器重建不会丢失数据。
