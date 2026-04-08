@@ -844,7 +844,8 @@ func (c *PUBGClient) GetMatchDetail(matchID, playerName string) (*MatchDetail, e
 		return nil, fmt.Errorf("player %q not found in match", playerName)
 	}
 
-	playerRank := 0
+	// winPlace from participant stats is the reliable placement field in PUBG API v2
+	playerRank := playerParticipant.stats.WinPlace
 	var teammates []MatchParticipantDetail
 	for _, r := range rosters {
 		inRoster := false
@@ -855,7 +856,6 @@ func (c *PUBGClient) GetMatchDetail(matchID, playerName string) (*MatchDetail, e
 			}
 		}
 		if inRoster {
-			playerRank = r.rank
 			for _, pid := range r.participantIDs {
 				if pid == playerParticipant.id {
 					continue

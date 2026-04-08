@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button, Input, Typography, Space, Spin, Card, Statistic, Row, Col,
-  Table, Tag, message, Modal, Descriptions, Divider, Select, Pagination
+  Table, Tag, message, Modal, Descriptions, Divider, Select, Pagination, Progress
 } from 'antd';
 import { ArrowLeftOutlined, SearchOutlined, TrophyOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
 import {
@@ -23,16 +23,21 @@ const gameModeLabel: Record<string, string> = {
 };
 
 const mapNameLabel: Record<string, string> = {
+  'Baltic_Main': '艾伦格',
   'Erangel_Main': '艾伦格',
+  'Desert_Main': '米拉玛',
   'Savage_Main': '萨诺',
   'DihorOtok_Main': '维肯迪',
   'Summerland_Main': '卡拉金',
-  'Baltic_Main': '艾伦格',
   'Range_Main': '训练场',
   'Kiki_Main': '德斯顿',
   'Tiger_Main': '塔戈',
   'Neon_Main': '荣光',
   'Heaven_Main': '里维拉',
+  'Chimera_Main': '帕拉莫',
+  'Rondo_Main': '荣耀',
+  'LaboratoryMain': '绝境岛',
+  'Shipment_Main': '战舰',
 };
 
 const rankColor = (rank: number): string => {
@@ -153,12 +158,8 @@ export default function StatsPage() {
   const avgDamage = loadedRows.length > 0
     ? loadedRows.reduce((sum, r) => sum + r.detail!.player.damage, 0) / loadedRows.length
     : 0;
-  const avgKDA = loadedRows.length > 0
-    ? loadedRows.reduce((sum, r) => {
-        const d = r.detail!.player;
-        const deaths = d.survived ? 0 : 1;
-        return sum + (d.kills + d.assists) / Math.max(deaths, 1);
-      }, 0) / loadedRows.length
+  const avgKills = loadedRows.length > 0
+    ? loadedRows.reduce((sum, r) => sum + r.detail!.player.kills, 0) / loadedRows.length
     : 0;
 
   const pageSize = 10;
@@ -204,11 +205,15 @@ export default function StatsPage() {
       key: 'time',
       render: (_: unknown, row: MatchRow) => {
         if (!row.detail) return <Text type="secondary">-</Text>;
-        const d = new Date(row.detail.createdAt);
+        const start = new Date(row.detail.createdAt);
+        const end = new Date(start.getTime() + row.detail.duration * 1000);
+        const dateStr = start.toLocaleDateString('zh-CN');
+        const startTime = start.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        const endTime = end.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
         return (
           <Space direction="vertical" size={0}>
-            <Text style={{ fontSize: 12 }}>{d.toLocaleDateString('zh-CN')}</Text>
-            <Text style={{ fontSize: 11, color: '#888' }}>{d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</Text>
+            <Text style={{ fontSize: 12 }}>{dateStr}</Text>
+            <Text style={{ fontSize: 11, color: '#888' }}>{startTime} → {endTime} · {formatTime(row.detail.duration)}</Text>
           </Space>
         );
       },
@@ -232,14 +237,15 @@ export default function StatsPage() {
       },
     },
     {
-      title: '存活',
-      key: 'survived',
-      width: 60,
+      title: 'KDA',
+      key: 'kda',
+      width: 65,
       render: (_: unknown, row: MatchRow) => {
         if (!row.detail) return '-';
-        return row.detail.player.survived
-          ? <Tag color="green" style={{ fontSize: 11 }}>存活</Tag>
-          : <Tag color="default" style={{ fontSize: 11 }}>阵亡</Tag>;
+        const p = row.detail.player;
+        const deaths = p.survived ? 0 : 1;
+        const kda = (p.kills + p.assists) / Math.max(deaths, 1);
+        return <Text>{kda.toFixed(2)}</Text>;
       },
     },
     {
@@ -353,20 +359,29 @@ export default function StatsPage() {
           {matchRows.length > 0 && (
             <>
               <Card
-                title={`近 ${matchRows.length} 场统计（已加载 ${loadedRows.length} 场）`}
+                title="近期对局"
                 style={{ marginBottom: 16 }}
+                extra={
+                  loadedRows.length < matchRows.length
+                    ? <Progress
+                        percent={Math.round(loadedRows.length / matchRows.length * 100)}
+                        size="small"
+                        style={{ width: 140 }}
+                        format={() => `${loadedRows.length}/${matchRows.length}`}
+                      />
+                    : null
+                }
               >
-                <Row gutter={[16, 8]}>
-                  <Col xs={12} sm={8}>
-                    <Statistic title="平均伤害" value={Math.round(avgDamage)} />
-                  </Col>
-                  <Col xs={12} sm={8}>
-                    <Statistic title="平均KDA" value={avgKDA.toFixed(2)} />
-                  </Col>
-                </Row>
-              </Card>
-
-              <Card title={`近期对局（${matchRows.length} 场，加载中 ${matchRows.filter(r => r.loading).length} 场）`}>
+                {loadedRows.length > 0 && (
+                  <Row gutter={[16, 8]} style={{ marginBottom: 16 }}>
+                    <Col xs={12} sm={8}>
+                      <Statistic title="场均伤害" value={Math.round(avgDamage)} />
+                    </Col>
+                    <Col xs={12} sm={8}>
+                      <Statistic title="场均击杀" value={avgKills.toFixed(2)} />
+                    </Col>
+                  </Row>
+                )}
                 <Table
                   dataSource={pagedRows}
                   columns={matchColumns}
