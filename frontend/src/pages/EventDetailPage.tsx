@@ -229,6 +229,7 @@ ${ev.note ? `📝 ${ev.note}\n` : ''}
             pagination={false}
             size="small"
             rowKey={(r) => `${r.teamNo}-${r.slotNo}`}
+            scroll={{ x: 'max-content' }}
           />
         </Card>
       ))}
@@ -245,6 +246,7 @@ ${ev.note ? `📝 ${ev.note}\n` : ''}
             pagination={false}
             size="small"
             rowKey={(_, idx) => String(idx)}
+            scroll={{ x: 'max-content' }}
           />
         </Card>
       )}
