@@ -90,7 +90,12 @@ export default function AdminEventForm() {
       <Card>
         <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ teamCount: 2 }}>
           <Form.Item name="eventDate" label="活动日期" rules={[{ required: true, message: '请选择活动日期' }]}>
-            <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} disabled={isEdit} />
+            <DatePicker
+              format="YYYY-MM-DD"
+              style={{ width: '100%' }}
+              disabled={isEdit}
+              disabledDate={(current) => !isEdit && current && current < dayjs().startOf('day')}
+            />
           </Form.Item>
           <Form.Item name="teamCount" label="队伍数量" rules={[{ required: true }]}>
             <InputNumber min={1} max={100} style={{ width: '100%' }} />

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Button, Input, Typography, Space, Spin, Card, Statistic, Row, Col,
+  Button, AutoComplete, Input, Typography, Space, Spin, Card, Statistic, Row, Col,
   Table, Tag, message, Modal, Descriptions, Divider, Select, Pagination, Progress
 } from 'antd';
 import { ArrowLeftOutlined, SearchOutlined, TrophyOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
@@ -10,6 +10,24 @@ import {
   type PlayerStatsOverview, type MatchDetail, type MatchParticipantDetail, type SeasonInfo
 } from '../api';
 import { useUserMe } from '../hooks/useUserMe';
+
+const HISTORY_KEY = 'stats_search_history';
+
+function getSearchHistory(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveSearchHistory(name: string): string[] {
+  const history = getSearchHistory().filter((h) => h !== name);
+  history.unshift(name);
+  const updated = history.slice(0, 10);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+  return updated;
+}
 
 const { Title, Text } = Typography;
 
@@ -58,7 +76,12 @@ function formatKm(meters: number): string {
 
 function seasonLabel(id: string): string {
   const parts = id.split('.');
-  return parts[parts.length - 1] || id;
+  const last = parts[parts.length - 1] || id;
+  const numMatch = last.match(/(\d+)$/);
+  if (numMatch) {
+    return `第 ${parseInt(numMatch[1], 10)} 赛季`;
+  }
+  return last;
 }
 
 interface MatchRow {
@@ -72,8 +95,11 @@ interface MatchRow {
 export default function StatsPage() {
   const navigate = useNavigate();
   const [searchName, setSearchName] = useState('');
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [stats, setStats] = useState<PlayerStatsOverview | null>(null);
+  const [currentPlayerName, setCurrentPlayerName] = useState('');
   const [matchRows, setMatchRows] = useState<MatchRow[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<MatchDetail | null>(null);
   const [seasons, setSeasons] = useState<SeasonInfo[]>([]);
@@ -83,6 +109,7 @@ export default function StatsPage() {
   const { user, refresh: refreshUser } = useUserMe();
 
   useEffect(() => {
+    setSearchHistory(getSearchHistory());
     getSeasons().then((res) => {
       setSeasons(res.data);
       const current = res.data.find((s) => s.isCurrentSeason);
@@ -124,6 +151,9 @@ export default function StatsPage() {
       const res = await getPlayerStats(name, selectedSeason);
       const data = res.data;
       setStats(data);
+      setCurrentPlayerName(name);
+      const updated = saveSearchHistory(name);
+      setSearchHistory(updated);
       const rows: MatchRow[] = data.recentMatchIds.map((id) => ({
         matchId: id,
         playerName: data.playerName,
@@ -140,6 +170,21 @@ export default function StatsPage() {
       setLoading(false);
     }
   }, [searchName, selectedSeason]);
+
+  const handleSeasonChange = useCallback(async (newSeason: string) => {
+    setSelectedSeason(newSeason);
+    if (!currentPlayerName) return;
+    setStatsLoading(true);
+    try {
+      const res = await getPlayerStats(currentPlayerName, newSeason);
+      setStats(res.data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '查询失败';
+      message.error(msg);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [currentPlayerName]);
 
   // 搜索成功后自动依次加载所有对局详情（每 800ms 一场）
   useEffect(() => {
@@ -169,7 +214,7 @@ export default function StatsPage() {
     {
       title: '排名',
       key: 'rank',
-      width: 80,
+      width: 60,
       render: (_: unknown, row: MatchRow) => {
         if (row.loading) return <Spin size="small" />;
         if (!row.detail) return <Text type="secondary">-</Text>;
@@ -189,6 +234,7 @@ export default function StatsPage() {
     {
       title: '模式/地图',
       key: 'mode',
+      width: 90,
       render: (_: unknown, row: MatchRow) => {
         if (!row.detail) return <Text type="secondary">-</Text>;
         const d = row.detail;
@@ -203,17 +249,16 @@ export default function StatsPage() {
     {
       title: '时间',
       key: 'time',
+      width: 100,
       render: (_: unknown, row: MatchRow) => {
         if (!row.detail) return <Text type="secondary">-</Text>;
         const start = new Date(row.detail.createdAt);
-        const end = new Date(start.getTime() + row.detail.duration * 1000);
-        const dateStr = start.toLocaleDateString('zh-CN');
-        const startTime = start.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-        const endTime = end.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = start.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+        const timeStr = start.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
         return (
           <Space direction="vertical" size={0}>
             <Text style={{ fontSize: 12 }}>{dateStr}</Text>
-            <Text style={{ fontSize: 11, color: '#888' }}>{startTime} → {endTime} · {formatTime(row.detail.duration)}</Text>
+            <Text style={{ fontSize: 11, color: '#888' }}>{timeStr} · {formatTime(row.detail.duration)}</Text>
           </Space>
         );
       },
@@ -221,37 +266,52 @@ export default function StatsPage() {
     {
       title: '击杀',
       key: 'kills',
-      width: 60,
+      width: 55,
       render: (_: unknown, row: MatchRow) => {
         if (!row.detail) return '-';
         return <Text style={{ color: row.detail.player.kills > 0 ? '#f0a500' : '#ccc' }}>{row.detail.player.kills}</Text>;
       },
     },
     {
+      title: '击倒',
+      key: 'dbnos',
+      width: 55,
+      render: (_: unknown, row: MatchRow) => {
+        if (!row.detail) return '-';
+        return <Text>{row.detail.player.dbnos}</Text>;
+      },
+    },
+    {
+      title: '助攻',
+      key: 'assists',
+      width: 55,
+      render: (_: unknown, row: MatchRow) => {
+        if (!row.detail) return '-';
+        return <Text>{row.detail.player.assists}</Text>;
+      },
+    },
+    {
       title: '伤害',
       key: 'damage',
-      width: 70,
+      width: 65,
       render: (_: unknown, row: MatchRow) => {
         if (!row.detail) return '-';
         return <Text>{Math.round(row.detail.player.damage)}</Text>;
       },
     },
     {
-      title: 'KDA',
-      key: 'kda',
-      width: 65,
+      title: '生存',
+      key: 'survive',
+      width: 70,
       render: (_: unknown, row: MatchRow) => {
         if (!row.detail) return '-';
-        const p = row.detail.player;
-        const deaths = p.survived ? 0 : 1;
-        const kda = (p.kills + p.assists) / Math.max(deaths, 1);
-        return <Text>{kda.toFixed(2)}</Text>;
+        return <Text style={{ fontSize: 12 }}>{formatTime(row.detail.player.timeSurvived)}</Text>;
       },
     },
     {
       title: '详情',
       key: 'action',
-      width: 60,
+      width: 55,
       render: (_: unknown, row: MatchRow) => {
         if (!row.detail) return null;
         return (
@@ -297,29 +357,20 @@ export default function StatsPage() {
             </Space>
           </div>
         )}
-        {seasons.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>赛季：</Text>
-            <Select
-              style={{ minWidth: 160 }}
-              size="small"
-              value={selectedSeason}
-              onChange={(val) => setSelectedSeason(val)}
-              options={seasons.map((s) => ({
-                label: seasonLabel(s.id) + (s.isCurrentSeason ? ' (当前)' : ''),
-                value: s.id,
-              }))}
-            />
-          </div>
-        )}
         <Space.Compact style={{ width: '100%' }}>
-          <Input
-            placeholder="输入 PUBG 游戏名（区分大小写）"
+          <AutoComplete
+            style={{ flex: 1 }}
+            options={searchHistory.map((h) => ({ value: h }))}
             value={searchName}
-            onChange={(e) => setSearchName(e.target.value)}
-            onPressEnter={handleSearch}
-            size="large"
-          />
+            onChange={(val) => setSearchName(val)}
+            onSelect={(val) => setSearchName(val)}
+          >
+            <Input
+              placeholder="输入 PUBG 游戏名（区分大小写）"
+              onPressEnter={handleSearch}
+              size="large"
+            />
+          </AutoComplete>
           <Button type="primary" icon={<SearchOutlined />} size="large" loading={loading} onClick={handleSearch}>
             查询
           </Button>
@@ -330,7 +381,28 @@ export default function StatsPage() {
 
       {stats && (
         <>
-          <Card title={<Text style={{ color: '#f0a500', fontWeight: 700 }}>{stats.playerName}</Text>} style={{ marginBottom: 24 }}>
+          <Card
+            title={<Text style={{ color: '#f0a500', fontWeight: 700 }}>{stats.playerName}</Text>}
+            style={{ marginBottom: 24 }}
+            extra={
+              seasons.length > 0 ? (
+                <Space>
+                  <Text type="secondary" style={{ fontSize: 12 }}>赛季：</Text>
+                  <Select
+                    style={{ minWidth: 120 }}
+                    size="small"
+                    value={selectedSeason}
+                    onChange={handleSeasonChange}
+                    loading={statsLoading}
+                    options={seasons.map((s) => ({
+                      label: seasonLabel(s.id) + (s.isCurrentSeason ? ' (当前)' : ''),
+                      value: s.id,
+                    }))}
+                  />
+                </Space>
+              ) : null
+            }
+          >
             <Row gutter={[16, 16]}>
               <Col xs={12} sm={6}>
                 <Statistic title="本赛季场次" value={stats.matches} />
@@ -388,6 +460,7 @@ export default function StatsPage() {
                   rowKey="matchId"
                   pagination={false}
                   size="small"
+                  scroll={{ x: 600 }}
                 />
                 {matchRows.length > pageSize && (
                   <div style={{ textAlign: 'center', marginTop: 16 }}>
