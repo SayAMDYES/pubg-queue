@@ -1,13 +1,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Badge, Typography, Space, Spin, message } from 'antd';
+import { Button, Spin, message } from 'antd';
 import { LeftOutlined, RightOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
 import { getCalendar, userLogout, type CalendarDay } from '../api';
 import { useUserMe } from '../hooks/useUserMe';
 
-const { Title, Text } = Typography;
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
-const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+function getDayStatus(day: CalendarDay): { color: string; label: string; dotCls: string } {
+  if (!day.hasEvent) return { color: 'transparent', label: '', dotCls: '' };
+  if (!day.open) return { color: 'var(--text-dim)', label: '已关闭', dotCls: 'status-dot--closed' };
+  if (day.full) return { color: 'var(--danger)', label: '已满', dotCls: 'status-dot--full' };
+  return { color: 'var(--success)', label: '可报名', dotCls: 'status-dot--open' };
+}
 
 export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
@@ -21,14 +26,17 @@ export default function CalendarPage() {
 
   const load = useCallback((month?: string) => {
     setLoading(true);
-    getCalendar(month).then((res) => {
-      const d = res.data;
-      setDays(d.days);
-      setMonthStr(d.monthStr);
-      setPrevMonth(d.prevMonth);
-      setNextMonth(d.nextMonth);
-      setFirstWeekday(d.firstWeekday);
-    }).catch(() => message.error('加载日历失败')).finally(() => setLoading(false));
+    getCalendar(month)
+      .then((res) => {
+        const d = res.data;
+        setDays(d.days);
+        setMonthStr(d.monthStr);
+        setPrevMonth(d.prevMonth);
+        setNextMonth(d.nextMonth);
+        setFirstWeekday(d.firstWeekday);
+      })
+      .catch(() => message.error('加载日历失败'))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -43,101 +51,129 @@ export default function CalendarPage() {
     }
   };
 
-  const getStatusColor = (day: CalendarDay) => {
-    if (!day.hasEvent) return undefined;
-    if (!day.open) return '#666';
-    if (day.full) return '#e74c3c';
-    return '#2ecc71';
-  };
-
-  const getStatusText = (day: CalendarDay) => {
-    if (!day.hasEvent) return '';
-    if (!day.open) return '已关闭';
-    if (day.full) return '已满';
-    return '可报名';
-  };
-
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px', background: '#0a0a0a', minHeight: '100vh' }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        {user.loggedIn ? (
-          <Space>
-            <Text style={{ color: '#999', fontSize: 13 }}><UserOutlined style={{ marginRight: 4 }} />{user.phone}</Text>
-            <Button size="small" icon={<LogoutOutlined />} onClick={handleLogout}>退出</Button>
-          </Space>
-        ) : (
-          <Button size="small" icon={<UserOutlined />} onClick={() => navigate('/login')}>登录 / 注册</Button>
-        )}
-      </div>
+    <div className="page-wrap">
+      <div className="page-inner">
 
-      <Title level={2} style={{ textAlign: 'center', color: '#f0a500' }}>🐔 趴布鸡排队</Title>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Button icon={<LeftOutlined />} onClick={() => load(prevMonth)} />
-        <Title level={4} style={{ margin: 0, color: '#fff' }}>{monthStr}</Title>
-        <Button icon={<RightOutlined />} onClick={() => load(nextMonth)} />
-      </div>
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>
-      ) : (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
-            {weekDays.map((d) => (
-              <div key={d} style={{ textAlign: 'center', padding: 8, color: '#999', fontWeight: 600 }}>{d}</div>
-            ))}
+        {/* Top bar */}
+        <div className="top-bar">
+          <div className="flex-gap-8">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+            <span className="page-title page-title--sm">PUBG SQUAD</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-            {Array.from({ length: firstWeekday }, (_, i) => (
-              <div key={`empty-${i}`} />
-            ))}
+          <div>
+            {user.loggedIn ? (
+              <div className="flex-gap-8">
+                <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                  <UserOutlined style={{ marginRight: 4, fontSize: 11 }} />
+                  {user.phone}
+                </span>
+                <Button
+                  size="small"
+                  icon={<LogoutOutlined />}
+                  onClick={handleLogout}
+                  style={{ background: 'var(--surface-2)', borderColor: 'var(--border)', color: 'var(--text-muted)', fontFamily: 'var(--body-font)' }}
+                >
+                  退出
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="small"
+                icon={<UserOutlined />}
+                onClick={() => navigate('/login')}
+                style={{ background: 'var(--surface-2)', borderColor: 'rgba(240,165,0,0.35)', color: 'var(--primary)', fontFamily: 'var(--body-font)' }}
+              >
+                登录 / 注册
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Hero title */}
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <div className="page-title page-title--lg" style={{ marginBottom: 6 }}>趴布鸡排队</div>
+          <div className="section-label" style={{ color: 'var(--text-dim)' }}>SQUAD LOBBY CALENDAR</div>
+        </div>
+
+        {/* Month navigator */}
+        <div className="flex-between" style={{ marginBottom: 14 }}>
+          <Button
+            icon={<LeftOutlined />}
+            onClick={() => load(prevMonth)}
+            style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+          />
+          <span style={{ fontFamily: 'var(--heading-font)', fontSize: 15, letterSpacing: '0.08em', color: 'var(--text)' }}>
+            {monthStr}
+          </span>
+          <Button
+            icon={<RightOutlined />}
+            onClick={() => load(nextMonth)}
+            style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+          />
+        </div>
+
+        {/* Weekday headers */}
+        <div className="cal-grid" style={{ marginBottom: 3 }}>
+          {WEEKDAYS.map((d) => (
+            <div key={d} className="cal-header">{d}</div>
+          ))}
+        </div>
+
+        {/* Calendar grid */}
+        {loading ? (
+          <div className="flex-center" style={{ padding: '80px 0' }}>
+            <Spin size="large" />
+          </div>
+        ) : (
+          <div className="cal-grid">
+            {Array.from({ length: firstWeekday }, (_, i) => <div key={`e${i}`} />)}
             {days.map((day) => {
-              const statusColor = getStatusColor(day);
+              const { color, label, dotCls } = getDayStatus(day);
               const canClick = day.hasEvent;
               return (
                 <div
                   key={day.date}
+                  className={[
+                    'cal-day',
+                    canClick ? 'cal-day--event' : '',
+                    day.isToday ? 'cal-day--today' : '',
+                    day.past && !day.hasEvent ? 'cal-day--past' : '',
+                  ].filter(Boolean).join(' ')}
                   onClick={() => canClick && navigate(`/date/${day.date}`)}
-                  style={{
-                    padding: '8px 4px',
-                    textAlign: 'center',
-                    borderRadius: 8,
-                    cursor: canClick ? 'pointer' : 'default',
-                    background: day.isToday ? '#1a1a2e' : '#111',
-                    border: day.isToday ? '2px solid #f0a500' : '1px solid #222',
-                    opacity: day.past && !day.hasEvent ? 0.4 : 1,
-                    minHeight: 70,
-                  }}
                 >
-                  <div style={{ fontWeight: day.isToday ? 700 : 400, color: day.isToday ? '#f0a500' : '#ccc' }}>
+                  <div className={`cal-day__num${day.isToday ? ' cal-day__num--today' : ''}`}>
                     {day.day}
                   </div>
                   {day.hasEvent && (
-                    <Space direction="vertical" size={0} style={{ marginTop: 4 }}>
+                    <>
                       {day.startTime && (
-                        <Text style={{ fontSize: 10, color: '#888' }}>{day.startTime}</Text>
+                        <div className="cal-day__time">{day.startTime}</div>
                       )}
-                      <Badge
-                        color={statusColor}
-                        text={<Text style={{ fontSize: 11, color: statusColor }}>{getStatusText(day)}</Text>}
-                      />
-                      <Text style={{ fontSize: 10, color: '#888' }}>
+                      <div className="cal-day__status">
+                        <span className={`status-dot ${dotCls}`} />
+                        <span style={{ color }}>{label}</span>
+                      </div>
+                      <div className="cal-day__count">
                         {day.registered}/{day.capacity}
-                      </Text>
-                    </Space>
+                      </div>
+                    </>
                   )}
                 </div>
               );
             })}
           </div>
-        </>
-      )}
+        )}
 
-      <div style={{ textAlign: 'center', marginTop: 24 }}>
-        <Space>
-          <Button type="link" onClick={() => navigate('/stats')}>战绩查询</Button>
-          <Button type="link" onClick={() => navigate('/admin')}>管理后台</Button>
-        </Space>
+        {/* Footer */}
+        <div className="page-footer" style={{ marginTop: 32 }}>
+          <button className="page-footer__link" onClick={() => navigate('/stats')}>战绩查询</button>
+          <span className="page-footer__sep">·</span>
+          <button className="page-footer__link" onClick={() => navigate('/admin')}>管理后台</button>
+        </div>
+
       </div>
     </div>
   );

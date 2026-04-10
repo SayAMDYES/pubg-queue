@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Table, Button, Tag, Space, message, Typography, Modal, Spin } from 'antd';
+import { Table, Button, Tag, Space, message, Modal, Spin } from 'antd';
 import { PlusOutlined, LogoutOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
 import { adminGetEvents, adminToggleEvent, adminDeleteEvent, adminLogout, adminCheck, type AdminEventRow } from '../../api';
-
-const { Title } = Typography;
 
 export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
@@ -57,8 +55,7 @@ export default function AdminDashboard() {
   const handleLogout = async () => {
     try {
       await adminLogout();
-      navigate('/admin/login');
-    } catch {
+    } finally {
       navigate('/admin/login');
     }
   };
@@ -82,11 +79,7 @@ export default function AdminDashboard() {
       key: 'reg',
       render: (_: unknown, record: AdminEventRow) => `${record.registeredCount}/${record.teamCount * 4}`,
     },
-    {
-      title: '候补',
-      dataIndex: 'waitlistCount',
-      key: 'waitlistCount',
-    },
+    { title: '候补', dataIndex: 'waitlistCount', key: 'waitlistCount' },
     {
       title: '时间',
       key: 'time',
@@ -109,28 +102,33 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px', background: '#0a0a0a', minHeight: '100vh' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={3} style={{ color: '#f0a500', margin: 0 }}>🐔 管理后台</Title>
-        <Space>
-          <Button icon={<TeamOutlined />} onClick={() => navigate('/')}>前台</Button>
-          <Button icon={<UserOutlined />} onClick={() => navigate('/admin/users')}>账号管理</Button>
-          <Button icon={<PlusOutlined />} type="primary" onClick={() => navigate('/admin/events/new')}>新建活动</Button>
-          <Button icon={<LogoutOutlined />} onClick={handleLogout}>登出</Button>
-        </Space>
-      </div>
+    <div className="page-wrap">
+      <div className="page-inner page-inner--wide">
+        <div className="page-header">
+          <div className="page-title page-title--lg">管理后台</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button icon={<TeamOutlined />} onClick={() => navigate('/')}>前台</Button>
+            <Button icon={<UserOutlined />} onClick={() => navigate('/admin/users')}>账号管理</Button>
+            <Button icon={<PlusOutlined />} type="primary" onClick={() => navigate('/admin/events/new')}>新建活动</Button>
+            <Button icon={<LogoutOutlined />} onClick={handleLogout}>登出</Button>
+          </div>
+        </div>
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>
-      ) : (
-        <Table
-          dataSource={events}
-          columns={columns}
-          rowKey="eventDate"
-          pagination={{ pageSize: 20 }}
-          size="small"
-        />
-      )}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>
+        ) : (
+          <div className="g-card">
+            <Table
+              dataSource={events}
+              columns={columns}
+              rowKey="eventDate"
+              pagination={{ pageSize: 20 }}
+              size="small"
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+

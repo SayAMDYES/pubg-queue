@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Table, Tag, Button, Space, message, Typography, Modal, Spin, Descriptions } from 'antd';
+import { Table, Tag, Button, Space, message, Modal, Spin, Descriptions } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, DeleteOutlined } from '@ant-design/icons';
 import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, type AdminEventDetailData } from '../../api';
-
-const { Title, Text } = Typography;
 
 const rankLabelColors: Record<string, string> = {
   '战神': '#ff4d4f',
@@ -81,7 +79,7 @@ export default function AdminEventDetail() {
   };
 
   if (loading || !data) {
-    return <div style={{ textAlign: 'center', padding: 80, background: '#0a0a0a', minHeight: '100vh' }}><Spin size="large" /></div>;
+    return <div className="page-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin size="large" /></div>;
   }
 
   const { event: ev, registrations, teams, waitlist, pubgEnabled, rankings } = data;
@@ -120,85 +118,102 @@ export default function AdminEventDetail() {
   ];
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px', background: '#0a0a0a', minHeight: '100vh' }}>
-      <Space style={{ marginBottom: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin')}>返回</Button>
-      </Space>
+    <div className="page-wrap">
+      <div className="page-inner page-inner--wide">
+        <div className="page-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin')}>返回</Button>
+            <div className="page-title page-title--lg">{ev.eventDate} 报名详情</div>
+          </div>
+        </div>
 
-      <Title level={3} style={{ color: '#f0a500' }}>{ev.eventDate} 报名详情</Title>
+        {/* Event info */}
+        <div className="g-card" style={{ marginBottom: 16 }}>
+          <Descriptions column={{ xs: 1, sm: 2 }} size="small">
+            <Descriptions.Item label="状态"><Tag color={ev.open ? 'green' : 'red'}>{ev.open ? '开放' : '关闭'}</Tag></Descriptions.Item>
+            <Descriptions.Item label="队伍数">{ev.teamCount}</Descriptions.Item>
+            <Descriptions.Item label="预计时间">{ev.startTime || '-'} ~ {ev.endTime || '-'}</Descriptions.Item>
+            <Descriptions.Item label="实际时间">{ev.actualStart || '-'} ~ {ev.actualEnd || '-'}</Descriptions.Item>
+            {ev.note && <Descriptions.Item label="备注" span={2}>{ev.note}</Descriptions.Item>}
+          </Descriptions>
+        </div>
 
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-          <Descriptions.Item label="状态"><Tag color={ev.open ? 'green' : 'red'}>{ev.open ? '开放' : '关闭'}</Tag></Descriptions.Item>
-          <Descriptions.Item label="队伍数">{ev.teamCount}</Descriptions.Item>
-          <Descriptions.Item label="预计时间">{ev.startTime || '-'} ~ {ev.endTime || '-'}</Descriptions.Item>
-          <Descriptions.Item label="实际时间">{ev.actualStart || '-'} ~ {ev.actualEnd || '-'}</Descriptions.Item>
-          {ev.note && <Descriptions.Item label="备注" span={2}>{ev.note}</Descriptions.Item>}
-        </Descriptions>
-      </Card>
+        <Space wrap style={{ marginBottom: 20 }}>
+          <Button icon={<DownloadOutlined />} onClick={() => window.open(`/api/admin/events/${date}/export`, '_blank')}>导出 CSV</Button>
+          <Button onClick={() => navigate(`/admin/events/${date}/edit`)}>编辑活动</Button>
+          {pubgEnabled && <Button icon={<ReloadOutlined />} onClick={handleRefreshRankings}>刷新战绩</Button>}
+          <Button icon={<ClearOutlined />} danger onClick={handleClear}>清空报名</Button>
+          <Button icon={<DeleteOutlined />} danger type="primary" onClick={handleDelete}>删除活动</Button>
+        </Space>
 
-      <Space wrap style={{ marginBottom: 16 }}>
-        <Button icon={<DownloadOutlined />} onClick={() => window.open(`/api/admin/events/${date}/export`, '_blank')}>导出 CSV</Button>
-        <Button onClick={() => navigate(`/admin/events/${date}/edit`)}>编辑活动</Button>
-        {pubgEnabled && <Button icon={<ReloadOutlined />} onClick={handleRefreshRankings}>刷新战绩</Button>}
-        <Button icon={<ClearOutlined />} danger onClick={handleClear}>清空报名</Button>
-        <Button icon={<DeleteOutlined />} danger type="primary" onClick={handleDelete}>删除活动</Button>
-      </Space>
+        {/* Teams grid */}
+        <div className="section-label" style={{ marginBottom: 12 }}>队伍安排</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 20 }}>
+          {teams.map((team) => (
+            <div key={team.teamNo} className="g-card">
+              <div className="section-label" style={{ marginBottom: 10 }}>第 {team.teamNo} 队</div>
+              {team.slots.map((slot, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ color: 'var(--text-dim)', width: 20, fontSize: 12 }}>{slot.slotNo}</span>
+                  {slot.filled ? (
+                    <>
+                      <span style={{ color: 'var(--text)', flex: 1 }}>{slot.name}</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{slot.phone}</span>
+                    </>
+                  ) : (
+                    <span style={{ color: 'var(--text-dim)', fontStyle: 'italic' }}>空位</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
 
-      {/* 队伍网格 */}
-      {teams.map((team) => (
-        <Card key={team.teamNo} title={`第 ${team.teamNo} 队`} size="small" style={{ marginBottom: 12 }}>
+        {/* Waitlist */}
+        {waitlist.length > 0 && (
+          <div className="g-card" style={{ marginBottom: 16 }}>
+            <div className="section-label" style={{ marginBottom: 12 }}>候补名单</div>
+            <Table
+              dataSource={waitlist}
+              columns={[
+                { title: '序号', key: 'idx', width: 60, render: (_: unknown, __: unknown, idx: number) => idx + 1 },
+                { title: '游戏名', dataIndex: 'name', key: 'name' },
+                { title: '手机号', dataIndex: 'phone', key: 'phone' },
+              ]}
+              pagination={false}
+              size="small"
+              rowKey={(_, idx) => String(idx)}
+            />
+          </div>
+        )}
+
+        {/* All registrations */}
+        <div className="g-card" style={{ marginBottom: 16 }}>
+          <div className="section-label" style={{ marginBottom: 12 }}>报名记录</div>
           <Table
-            dataSource={team.slots}
-            columns={[
-              { title: '位置', dataIndex: 'slotNo', key: 'slotNo', width: 60 },
-              { title: '游戏名', dataIndex: 'name', key: 'name', render: (n: string, r: { filled: boolean }) => r.filled ? n : <Text type="secondary">空位</Text> },
-              { title: '手机号', dataIndex: 'phone', key: 'phone', render: (p: string, r: { filled: boolean }) => r.filled ? p : '-' },
-            ]}
+            dataSource={registrations}
+            columns={regColumns}
             pagination={false}
             size="small"
-            rowKey={(_r, idx) => `${team.teamNo}-${idx}`}
+            rowKey="id"
           />
-        </Card>
-      ))}
+        </div>
 
-      {waitlist.length > 0 && (
-        <Card title="候补名单" size="small" style={{ marginBottom: 16 }}>
-          <Table
-            dataSource={waitlist}
-            columns={[
-              { title: '序号', key: 'idx', width: 60, render: (_: unknown, __: unknown, idx: number) => idx + 1 },
-              { title: '游戏名', dataIndex: 'name', key: 'name' },
-              { title: '手机号', dataIndex: 'phone', key: 'phone' },
-            ]}
-            pagination={false}
-            size="small"
-            rowKey={(_, idx) => String(idx)}
-          />
-        </Card>
-      )}
-
-      <Card title="报名记录" size="small" style={{ marginBottom: 16 }}>
-        <Table
-          dataSource={registrations}
-          columns={regColumns}
-          pagination={false}
-          size="small"
-          rowKey="id"
-        />
-      </Card>
-
-      {pubgEnabled && rankings && rankings.length > 0 && (
-        <Card title="🏆 战绩排名" size="small">
-          <Table
-            dataSource={rankings}
-            columns={rankColumns}
-            pagination={false}
-            size="small"
-            rowKey="RankNo"
-          />
-        </Card>
-      )}
+        {/* Rankings */}
+        {pubgEnabled && rankings && rankings.length > 0 && (
+          <div className="g-card">
+            <div className="section-label" style={{ marginBottom: 12 }}>战绩排名</div>
+            <Table
+              dataSource={rankings}
+              columns={rankColumns}
+              pagination={false}
+              size="small"
+              rowKey="RankNo"
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+

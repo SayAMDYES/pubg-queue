@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Table, Button, Tag, Space, Input, message, Typography, Modal, Spin } from 'antd';
+import { Table, Button, Tag, Space, Input, message, Modal, Spin } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { adminGetUsers, adminDeleteUser, type AdminUserRow } from '../../api';
-
-const { Title } = Typography;
 
 export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
@@ -78,33 +76,39 @@ export default function AdminUsers() {
   ];
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px', background: '#0a0a0a', minHeight: '100vh' }}>
-      <Space style={{ marginBottom: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin')}>返回</Button>
-      </Space>
+    <div className="page-wrap">
+      <div className="page-inner page-inner--wide">
+        <div className="page-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin')}>返回</Button>
+            <div className="page-title page-title--lg">账号管理</div>
+          </div>
+        </div>
 
-      <Title level={3} style={{ color: '#f0a500' }}>👤 账号管理</Title>
-
-      <Input
-        prefix={<SearchOutlined />}
-        placeholder="搜索手机号或游戏名"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ maxWidth: 300, marginBottom: 16 }}
-        allowClear
-      />
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>
-      ) : (
-        <Table
-          dataSource={filtered}
-          columns={columns}
-          rowKey="id"
-          pagination={{ pageSize: 20 }}
-          size="small"
+        <Input
+          prefix={<SearchOutlined />}
+          placeholder="搜索手机号或游戏名"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ maxWidth: 320, marginBottom: 16 }}
+          allowClear
         />
-      )}
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>
+        ) : (
+          <div className="g-card">
+            <Table
+              dataSource={filtered}
+              columns={columns}
+              rowKey="id"
+              pagination={{ pageSize: 20 }}
+              size="small"
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+

@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Form, Input, Button, Tag, Table, message, Typography, Space, Spin, Modal, Checkbox, Divider } from 'antd';
+import { Form, Input, Button, Tag, Table, message, Spin, Modal, Checkbox } from 'antd';
 import { ArrowLeftOutlined, LockOutlined, DeleteOutlined } from '@ant-design/icons';
 import { adminGetUser, adminUpdateUser, adminDeleteUser, adminResetPassword, type AdminUserDetail } from '../../api';
-
-const { Title, Text } = Typography;
 
 export default function AdminUserEdit() {
   const { id } = useParams<{ id: string }>();
@@ -82,7 +80,7 @@ export default function AdminUserEdit() {
   };
 
   if (loading || !data) {
-    return <div style={{ textAlign: 'center', padding: 80, background: '#0a0a0a', minHeight: '100vh' }}><Spin size="large" /></div>;
+    return <div className="page-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin size="large" /></div>;
   }
 
   const { user, regHistory } = data;
@@ -100,84 +98,96 @@ export default function AdminUserEdit() {
   ];
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px', background: '#0a0a0a', minHeight: '100vh' }}>
-      <Space style={{ marginBottom: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin/users')}>返回</Button>
-      </Space>
+    <div className="page-wrap">
+      <div className="page-inner" style={{ maxWidth: 800 }}>
+        <div className="page-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin/users')}>返回</Button>
+            <div className="page-title page-title--lg">编辑用户</div>
+          </div>
+        </div>
 
-      <Title level={3} style={{ color: '#f0a500' }}>编辑用户</Title>
+        <div className="g-card" style={{ marginBottom: 4 }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>注册时间：{user.createdAt}</span>
+        </div>
 
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Text type="secondary">注册时间：{user.createdAt}</Text>
-      </Card>
-
-      <Card title="基本信息" style={{ marginBottom: 16 }}>
-        <Form form={form} onFinish={handleUpdate} layout="vertical">
-          <Form.Item name="phone" label="手机号" rules={[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号' }]}>
-            <Input maxLength={11} />
-          </Form.Item>
-
-          {user.gameNames.length > 0 && (
-            <Form.Item label="历史游戏名">
-              <Space wrap>
-                {user.gameNames.map((gn) => (
-                  <Checkbox
-                    key={gn}
-                    checked={deleteGameNames.includes(gn)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setDeleteGameNames([...deleteGameNames, gn]);
-                      } else {
-                        setDeleteGameNames(deleteGameNames.filter((n) => n !== gn));
-                      }
-                    }}
-                  >
-                    <Tag color={deleteGameNames.includes(gn) ? 'red' : 'default'}>
-                      {deleteGameNames.includes(gn) ? '🗑 ' : ''}{gn}
-                    </Tag>
-                  </Checkbox>
-                ))}
-              </Space>
-              {deleteGameNames.length > 0 && <div style={{ marginTop: 4 }}><Text type="danger">勾选的游戏名将在保存时删除</Text></div>}
+        {/* Basic info */}
+        <div className="g-card" style={{ marginBottom: 16 }}>
+          <div className="section-label" style={{ marginBottom: 16 }}>基本信息</div>
+          <Form form={form} onFinish={handleUpdate} layout="vertical">
+            <Form.Item name="phone" label="手机号" rules={[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号' }]}>
+              <Input maxLength={11} />
             </Form.Item>
-          )}
 
-          <Form.Item name="newGameName" label="新增游戏名">
-            <Input placeholder="可选，新增一个游戏名" maxLength={20} />
-          </Form.Item>
+            {user.gameNames.length > 0 && (
+              <Form.Item label="历史游戏名">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {user.gameNames.map((gn) => (
+                    <Checkbox
+                      key={gn}
+                      checked={deleteGameNames.includes(gn)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setDeleteGameNames([...deleteGameNames, gn]);
+                        } else {
+                          setDeleteGameNames(deleteGameNames.filter((n) => n !== gn));
+                        }
+                      }}
+                    >
+                      <Tag color={deleteGameNames.includes(gn) ? 'red' : 'default'}>{gn}</Tag>
+                    </Checkbox>
+                  ))}
+                </div>
+                {deleteGameNames.length > 0 && (
+                  <div style={{ marginTop: 6, color: 'var(--danger)', fontSize: 12 }}>勾选的游戏名将在保存时删除</div>
+                )}
+              </Form.Item>
+            )}
 
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={submitting}>保存修改</Button>
-          </Form.Item>
-        </Form>
-      </Card>
+            <Form.Item name="newGameName" label="新增游戏名">
+              <Input placeholder="可选，新增一个游戏名" maxLength={20} />
+            </Form.Item>
 
-      <Card title={<><LockOutlined /> 重置密码</>} style={{ marginBottom: 16 }}>
-        <Form form={pwForm} onFinish={handleResetPassword} layout="inline">
-          <Form.Item name="newPassword" rules={[{ required: true, min: 6, message: '密码至少6位' }]}>
-            <Input.Password placeholder="新密码" />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit">重置密码</Button>
-          </Form.Item>
-        </Form>
-      </Card>
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button type="primary" htmlType="submit" loading={submitting}>保存修改</Button>
+            </Form.Item>
+          </Form>
+        </div>
 
-      {regHistory.length > 0 && (
-        <Card title="报名历史" size="small" style={{ marginBottom: 16 }}>
-          <Table
-            dataSource={regHistory}
-            columns={histColumns}
-            pagination={false}
-            size="small"
-            rowKey={(_, idx) => String(idx)}
-          />
-        </Card>
-      )}
+        {/* Reset password */}
+        <div className="g-card" style={{ marginBottom: 16 }}>
+          <div className="section-label" style={{ marginBottom: 16 }}>
+            <LockOutlined style={{ marginRight: 6 }} />重置密码
+          </div>
+          <Form form={pwForm} onFinish={handleResetPassword} layout="inline">
+            <Form.Item name="newPassword" rules={[{ required: true, min: 6, message: '密码至少6位' }]}>
+              <Input.Password placeholder="新密码" />
+            </Form.Item>
+            <Form.Item>
+              <Button type="primary" htmlType="submit">重置密码</Button>
+            </Form.Item>
+          </Form>
+        </div>
 
-      <Divider />
+        {/* Registration history */}
+        {regHistory.length > 0 && (
+          <div className="g-card" style={{ marginBottom: 16 }}>
+            <div className="section-label" style={{ marginBottom: 12 }}>报名历史</div>
+            <Table
+              dataSource={regHistory}
+              columns={histColumns}
+              pagination={false}
+              size="small"
+              rowKey={(_, idx) => String(idx)}
+            />
+          </div>
+        )}
 
-      <Button danger icon={<DeleteOutlined />} onClick={handleDelete}>删除此用户</Button>
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20, marginTop: 8 }}>
+          <Button danger icon={<DeleteOutlined />} onClick={handleDelete}>删除此用户</Button>
+        </div>
+      </div>
     </div>
   );
 }
+

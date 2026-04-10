@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Form, Input, Button, message, Typography } from 'antd';
+import { Form, Input, Button, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { adminLogin, adminCheck } from '../../api';
-
-const { Title } = Typography;
 
 export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
@@ -13,7 +11,7 @@ export default function AdminLogin() {
   useEffect(() => {
     adminCheck().then((res) => {
       if (res.data.loggedIn) navigate('/admin');
-    }).catch(() => {/* not logged in, stay on login page */});
+    }).catch(() => {/* not logged in */});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onFinish = async (values: { username: string; password: string }) => {
@@ -30,24 +28,36 @@ export default function AdminLogin() {
   };
 
   return (
-    <div style={{ maxWidth: 400, margin: '0 auto', padding: '80px 16px', minHeight: '100vh', background: '#0a0a0a' }}>
-      <Title level={3} style={{ textAlign: 'center', color: '#f0a500', marginBottom: 32 }}>🐔 管理后台</Title>
-      <Card>
-        <Form onFinish={onFinish} layout="vertical">
-          <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
-            <Input prefix={<UserOutlined />} placeholder="用户名" />
-          </Form.Item>
-          <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password prefix={<LockOutlined />} placeholder="密码" />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} block>登录</Button>
-          </Form.Item>
-        </Form>
-      </Card>
-      <div style={{ textAlign: 'center', marginTop: 16 }}>
-        <Button type="link" onClick={() => navigate('/')}>返回首页</Button>
+    <div className="auth-wrap">
+      <div className="auth-box">
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 12 }}>
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <div className="page-title page-title--lg" style={{ marginBottom: 6 }}>管理后台</div>
+          <div className="section-label" style={{ color: 'var(--text-dim)' }}>ADMIN COMMAND CENTER</div>
+        </div>
+
+        <div className="g-card g-card--accent">
+          <Form onFinish={onFinish} layout="vertical">
+            <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
+              <Input prefix={<UserOutlined style={{ color: 'var(--text-dim)' }} />} placeholder="用户名" size="large" />
+            </Form.Item>
+            <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]} style={{ marginBottom: 20 }}>
+              <Input.Password prefix={<LockOutlined style={{ color: 'var(--text-dim)' }} />} placeholder="密码" size="large" />
+            </Form.Item>
+            <Button type="primary" htmlType="submit" loading={loading} block size="large">
+              登录
+            </Button>
+          </Form>
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: 20 }}>
+          <button className="page-footer__link" onClick={() => navigate('/')}>← 返回首页</button>
+        </div>
       </div>
     </div>
   );
 }
+

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Button, AutoComplete, Input, Typography, Space, Spin, Card, Statistic, Row, Col,
+  Button, AutoComplete, Input, Typography, Space, Spin, Statistic, Row, Col,
   Table, Tag, message, Modal, Descriptions, Divider, Select, Pagination, Progress
 } from 'antd';
 import { ArrowLeftOutlined, SearchOutlined, TrophyOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
@@ -29,7 +29,7 @@ function saveSearchHistory(name: string): string[] {
   return updated;
 }
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const gameModeLabel: Record<string, string> = {
   'squad-fpp': '四排FPP',
@@ -322,136 +322,114 @@ export default function StatsPage() {
   ];
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px', background: '#0a0a0a', minHeight: '100vh' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}>返回</Button>
-        {user.loggedIn ? (
-          <Space>
-            <Text style={{ color: '#999', fontSize: 13 }}><UserOutlined style={{ marginRight: 4 }} />{user.phone}</Text>
-            <Button size="small" icon={<LogoutOutlined />} onClick={handleLogout}>退出</Button>
-          </Space>
-        ) : (
-          <Button size="small" icon={<UserOutlined />} onClick={() => navigate('/login?next=/stats')}>登录 / 注册</Button>
-        )}
-      </div>
+    <div className="page-wrap">
+      <div className="page-inner">
+        <div className="page-header">
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}>返回</Button>
+          {user.loggedIn ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: 13 }}><UserOutlined style={{ marginRight: 4 }} />{user.phone}</span>
+              <Button size="small" icon={<LogoutOutlined />} onClick={handleLogout}>退出</Button>
+            </div>
+          ) : (
+            <Button size="small" icon={<UserOutlined />} onClick={() => navigate('/login?next=/stats')}>登录 / 注册</Button>
+          )}
+        </div>
 
-      <Title level={3} style={{ color: '#f0a500', textAlign: 'center' }}>
-        <TrophyOutlined style={{ marginRight: 8 }} />战绩查询
-      </Title>
+        <div className="page-title page-title--lg" style={{ textAlign: 'center', marginBottom: 24 }}>
+          <TrophyOutlined style={{ marginRight: 8, color: 'var(--primary)' }} />战绩查询
+        </div>
 
-      <Card style={{ marginBottom: 24 }}>
-        {user.loggedIn && user.gameNames.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>我的游戏 ID：</Text>
-            <Space wrap>
-              {user.gameNames.map((name) => (
-                <Tag
-                  key={name}
-                  color="gold"
-                  style={{ cursor: 'pointer', fontSize: 13 }}
-                  onClick={() => setSearchName(name)}
-                >
-                  {name}
-                </Tag>
-              ))}
-            </Space>
-          </div>
-        )}
-        <Space.Compact style={{ width: '100%' }}>
-          <AutoComplete
-            style={{ flex: 1 }}
-            options={searchHistory.map((h) => ({ value: h }))}
-            value={searchName}
-            onChange={(val) => setSearchName(val)}
-            onSelect={(val) => setSearchName(val)}
-          >
-            <Input
-              placeholder="输入 PUBG 游戏名（区分大小写）"
-              onPressEnter={handleSearch}
-              size="large"
-            />
-          </AutoComplete>
-          <Button type="primary" icon={<SearchOutlined />} size="large" loading={loading} onClick={handleSearch}>
-            查询
-          </Button>
-        </Space.Compact>
-      </Card>
+        <div className="g-card" style={{ marginBottom: 24 }}>
+          {user.loggedIn && user.gameNames.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: 12, marginRight: 8 }}>我的游戏 ID：</span>
+              <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6 }}>
+                {user.gameNames.map((name) => (
+                  <Tag
+                    key={name}
+                    color="gold"
+                    style={{ cursor: 'pointer', fontSize: 13 }}
+                    onClick={() => setSearchName(name)}
+                  >
+                    {name}
+                  </Tag>
+                ))}
+              </span>
+            </div>
+          )}
+          <Space.Compact style={{ width: '100%' }}>
+            <AutoComplete
+              style={{ flex: 1 }}
+              options={searchHistory.map((h) => ({ value: h }))}
+              value={searchName}
+              onChange={(val) => setSearchName(val)}
+              onSelect={(val) => setSearchName(val)}
+            >
+              <Input
+                placeholder="输入 PUBG 游戏名（区分大小写）"
+                onPressEnter={handleSearch}
+                size="large"
+              />
+            </AutoComplete>
+            <Button type="primary" icon={<SearchOutlined />} size="large" loading={loading} onClick={handleSearch}>
+              查询
+            </Button>
+          </Space.Compact>
+        </div>
 
-      {loading && <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>}
+        {loading && <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>}
 
-      {stats && (
-        <>
-          <Card
-            title={<Text style={{ color: '#f0a500', fontWeight: 700 }}>{stats.playerName}</Text>}
-            style={{ marginBottom: 24 }}
-            extra={
-              seasons.length > 0 ? (
-                <Space>
-                  <Text type="secondary" style={{ fontSize: 12 }}>赛季：</Text>
-                  <Select
-                    style={{ minWidth: 120 }}
-                    size="small"
-                    value={selectedSeason}
-                    onChange={handleSeasonChange}
-                    loading={statsLoading}
-                    options={seasons.map((s) => ({
-                      label: seasonLabel(s.id) + (s.isCurrentSeason ? ' (当前)' : ''),
-                      value: s.id,
-                    }))}
-                  />
-                </Space>
-              ) : null
-            }
-          >
-            <Row gutter={[16, 16]}>
-              <Col xs={12} sm={6}>
-                <Statistic title="本赛季场次" value={stats.matches} />
-              </Col>
-              <Col xs={12} sm={6}>
-                <Statistic title="KDA" value={stats.kda.toFixed(2)} />
-              </Col>
-              <Col xs={12} sm={6}>
-                <Statistic title="总击杀" value={stats.kills} />
-              </Col>
-              <Col xs={12} sm={6}>
-                <Statistic title="均伤" value={Math.round(stats.avgDamage)} />
-              </Col>
-              <Col xs={12} sm={6}>
-                <Statistic title="总助攻" value={stats.assists} />
-              </Col>
-              <Col xs={12} sm={6}>
-                <Statistic title="总死亡" value={stats.deaths} />
-              </Col>
-              <Col xs={12} sm={6}>
-                <Statistic title="总伤害" value={Math.round(stats.totalDamage)} />
-              </Col>
-            </Row>
-          </Card>
+        {stats && (
+          <>
+            <div className="g-card" style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <span style={{ color: 'var(--primary)', fontWeight: 700, fontSize: 16 }}>{stats.playerName}</span>
+                {seasons.length > 0 && (
+                  <Space>
+                    <Text type="secondary" style={{ fontSize: 12 }}>赛季：</Text>
+                    <Select
+                      style={{ minWidth: 120 }}
+                      size="small"
+                      value={selectedSeason}
+                      onChange={handleSeasonChange}
+                      loading={statsLoading}
+                      options={seasons.map((s) => ({
+                        label: seasonLabel(s.id) + (s.isCurrentSeason ? ' (当前)' : ''),
+                        value: s.id,
+                      }))}
+                    />
+                  </Space>
+                )}
+              </div>
+              <Row gutter={[16, 16]}>
+                <Col xs={12} sm={6}><Statistic title="本赛季场次" value={stats.matches} /></Col>
+                <Col xs={12} sm={6}><Statistic title="KDA" value={stats.kda.toFixed(2)} /></Col>
+                <Col xs={12} sm={6}><Statistic title="总击杀" value={stats.kills} /></Col>
+                <Col xs={12} sm={6}><Statistic title="均伤" value={Math.round(stats.avgDamage)} /></Col>
+                <Col xs={12} sm={6}><Statistic title="总助攻" value={stats.assists} /></Col>
+                <Col xs={12} sm={6}><Statistic title="总死亡" value={stats.deaths} /></Col>
+                <Col xs={12} sm={6}><Statistic title="总伤害" value={Math.round(stats.totalDamage)} /></Col>
+              </Row>
+            </div>
 
-          {matchRows.length > 0 && (
-            <>
-              <Card
-                title="近期对局"
-                style={{ marginBottom: 16 }}
-                extra={
-                  loadedRows.length < matchRows.length
-                    ? <Progress
-                        percent={Math.round(loadedRows.length / matchRows.length * 100)}
-                        size="small"
-                        style={{ width: 140 }}
-                        format={() => `${loadedRows.length}/${matchRows.length}`}
-                      />
-                    : null
-                }
-              >
+            {matchRows.length > 0 && (
+              <div className="g-card" style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div className="section-label">近期对局</div>
+                  {loadedRows.length < matchRows.length && (
+                    <Progress
+                      percent={Math.round(loadedRows.length / matchRows.length * 100)}
+                      size="small"
+                      style={{ width: 140 }}
+                      format={() => `${loadedRows.length}/${matchRows.length}`}
+                    />
+                  )}
+                </div>
                 {loadedRows.length > 0 && (
                   <Row gutter={[16, 8]} style={{ marginBottom: 16 }}>
-                    <Col xs={12} sm={8}>
-                      <Statistic title="场均伤害" value={Math.round(avgDamage)} />
-                    </Col>
-                    <Col xs={12} sm={8}>
-                      <Statistic title="场均击杀" value={avgKills.toFixed(2)} />
-                    </Col>
+                    <Col xs={12} sm={8}><Statistic title="场均伤害" value={Math.round(avgDamage)} /></Col>
+                    <Col xs={12} sm={8}><Statistic title="场均击杀" value={avgKills.toFixed(2)} /></Col>
                   </Row>
                 )}
                 <Table
@@ -473,21 +451,21 @@ export default function StatsPage() {
                     />
                   </div>
                 )}
-              </Card>
-            </>
-          )}
-        </>
-      )}
+              </div>
+            )}
+          </>
+        )}
 
-      <Modal
-        open={!!selectedMatch}
-        onCancel={() => setSelectedMatch(null)}
-        footer={<Button onClick={() => setSelectedMatch(null)}>关闭</Button>}
-        title={selectedMatch ? `比赛详情 · #${selectedMatch.playerRank}/${selectedMatch.totalTeams}` : ''}
-        width={700}
-      >
-        {selectedMatch && <MatchDetailView match={selectedMatch} />}
-      </Modal>
+        <Modal
+          open={!!selectedMatch}
+          onCancel={() => setSelectedMatch(null)}
+          footer={<Button onClick={() => setSelectedMatch(null)}>关闭</Button>}
+          title={selectedMatch ? `比赛详情 · #${selectedMatch.playerRank}/${selectedMatch.totalTeams}` : ''}
+          width={700}
+        >
+          {selectedMatch && <MatchDetailView match={selectedMatch} />}
+        </Modal>
+      </div>
     </div>
   );
 }

@@ -20,10 +20,50 @@ function App() {
         algorithm: theme.darkAlgorithm,
         token: {
           colorPrimary: '#f0a500',
-          borderRadius: 8,
-          colorBgContainer: '#1a1a2e',
-          colorBgElevated: '#16213e',
-          colorBgLayout: '#0a0a0a',
+          colorBgContainer: '#0d0d1c',
+          colorBgElevated: '#131328',
+          colorBgLayout: '#060610',
+          colorBorder: 'rgba(240, 165, 0, 0.15)',
+          colorBorderSecondary: 'rgba(240, 165, 0, 0.08)',
+          colorText: '#dde1e9',
+          colorTextSecondary: '#7a8494',
+          colorTextTertiary: '#454e5e',
+          borderRadius: 6,
+          fontFamily: "'Chakra Petch', -apple-system, sans-serif",
+          fontSize: 13,
+        },
+        components: {
+          Table: {
+            colorBgContainer: '#0d0d1c',
+            headerBg: '#131328',
+            borderColor: 'rgba(240, 165, 0, 0.08)',
+            rowHoverBg: '#191932',
+          },
+          Card: {
+            colorBgContainer: '#0d0d1c',
+            colorBorderSecondary: 'rgba(240, 165, 0, 0.15)',
+            headerBg: '#131328',
+          },
+          Modal: {
+            contentBg: '#0d0d1c',
+            headerBg: '#131328',
+          },
+          Select: {
+            colorBgContainer: '#131328',
+            optionSelectedBg: 'rgba(240, 165, 0, 0.12)',
+          },
+          Input: {
+            colorBgContainer: '#131328',
+            hoverBorderColor: 'rgba(240, 165, 0, 0.5)',
+            activeBorderColor: '#f0a500',
+          },
+          DatePicker: {
+            colorBgContainer: '#131328',
+          },
+          Descriptions: {
+            colorBgContainer: 'transparent',
+            labelBg: 'transparent',
+          },
         },
       }}
     >

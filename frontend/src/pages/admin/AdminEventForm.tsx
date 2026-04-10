@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Form, Input, InputNumber, Button, message, Typography, Space, Spin } from 'antd';
+import { Form, Input, InputNumber, Button, message, Spin } from 'antd';
 import { DatePicker, TimePicker } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { adminCreateEvent, adminUpdateEvent, adminGetEventDetail } from '../../api';
-
-const { Title } = Typography;
 
 export default function AdminEventForm() {
   const { date } = useParams<{ date: string }>();
@@ -76,52 +74,56 @@ export default function AdminEventForm() {
   };
 
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: 80, background: '#0a0a0a', minHeight: '100vh' }}><Spin size="large" /></div>;
+    return <div className="page-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin size="large" /></div>;
   }
 
   return (
-    <div style={{ maxWidth: 600, margin: '0 auto', padding: '24px 16px', background: '#0a0a0a', minHeight: '100vh' }}>
-      <Space style={{ marginBottom: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin')}>返回</Button>
-      </Space>
+    <div className="page-wrap">
+      <div className="page-inner" style={{ maxWidth: 600 }}>
+        <div className="page-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin')}>返回</Button>
+            <div className="page-title page-title--lg">{isEdit ? '编辑活动' : '新建活动'}</div>
+          </div>
+        </div>
 
-      <Title level={3} style={{ color: '#f0a500' }}>{isEdit ? '编辑活动' : '新建活动'}</Title>
-
-      <Card>
-        <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ teamCount: 2 }}>
-          <Form.Item name="eventDate" label="活动日期" rules={[{ required: true, message: '请选择活动日期' }]}>
-            <DatePicker
-              format="YYYY-MM-DD"
-              style={{ width: '100%' }}
-              disabled={isEdit}
-              disabledDate={(current) => !isEdit && current && current < dayjs().startOf('day')}
-            />
-          </Form.Item>
-          <Form.Item name="teamCount" label="队伍数量" rules={[{ required: true }]}>
-            <InputNumber min={1} max={100} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="startTime" label="预计开始时间">
-            <TimePicker format="HH:mm" style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="endTime" label="预计结束时间">
-            <TimePicker format="HH:mm" style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="actualStart" label="实际开战时间">
-            <DatePicker showTime={{ format: 'HH:mm' }} format="YYYY-MM-DDTHH:mm" style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="actualEnd" label="实际结束时间">
-            <DatePicker showTime={{ format: 'HH:mm' }} format="YYYY-MM-DDTHH:mm" style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="note" label="备注">
-            <Input.TextArea rows={3} placeholder="活动备注（可选）" />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={submitting} block>
-              {isEdit ? '保存修改' : '创建活动'}
-            </Button>
-          </Form.Item>
-        </Form>
-      </Card>
+        <div className="g-card">
+          <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ teamCount: 2 }}>
+            <Form.Item name="eventDate" label="活动日期" rules={[{ required: true, message: '请选择活动日期' }]}>
+              <DatePicker
+                format="YYYY-MM-DD"
+                style={{ width: '100%' }}
+                disabled={isEdit}
+                disabledDate={(current) => !isEdit && current && current < dayjs().startOf('day')}
+              />
+            </Form.Item>
+            <Form.Item name="teamCount" label="队伍数量" rules={[{ required: true }]}>
+              <InputNumber min={1} max={100} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="startTime" label="预计开始时间">
+              <TimePicker format="HH:mm" style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="endTime" label="预计结束时间">
+              <TimePicker format="HH:mm" style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="actualStart" label="实际开战时间">
+              <DatePicker showTime={{ format: 'HH:mm' }} format="YYYY-MM-DDTHH:mm" style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="actualEnd" label="实际结束时间">
+              <DatePicker showTime={{ format: 'HH:mm' }} format="YYYY-MM-DDTHH:mm" style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="note" label="备注">
+              <Input.TextArea rows={3} placeholder="活动备注（可选）" />
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button type="primary" htmlType="submit" loading={submitting} block size="large">
+                {isEdit ? '保存修改' : '创建活动'}
+              </Button>
+            </Form.Item>
+          </Form>
+        </div>
+      </div>
     </div>
   );
 }
+
