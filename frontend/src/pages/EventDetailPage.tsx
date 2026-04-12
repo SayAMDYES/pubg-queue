@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Form, Input, Button, Select, message, Spin, Popconfirm, Tooltip, Modal } from 'antd';
+import { Form, Input, Button, Select, message, Spin, Popconfirm, Tooltip, Modal, Row, Col, Statistic, Table, Space, Tag, Divider, Pagination, Progress, Descriptions } from 'antd';
 import { CopyOutlined, ArrowLeftOutlined, UserAddOutlined, LogoutOutlined, UserOutlined, LoginOutlined, TrophyOutlined } from '@ant-design/icons';
-import { getEventDetail, registerEvent, leaveEvent, userLogout, getPlayerStats, type EventDetailData, type RegisterResult, type LeaveResult } from '../api';
+import {
+  getEventDetail, registerEvent, leaveEvent, userLogout, getPlayerStats, getMatchDetail, getSeasons,
+  type EventDetailData, type RegisterResult, type LeaveResult, type PlayerStatsOverview, type MatchDetail, type SeasonInfo,
+} from '../api';
 
 export default function EventDetailPage() {
   const { date } = useParams<{ date: string }>();
@@ -16,8 +19,14 @@ export default function EventDetailPage() {
   const [leaveForm] = Form.useForm();
   const [statsModal, setStatsModal] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [statsData, setStatsData] = useState<any>(null);
+  const [statsData, setStatsData] = useState<PlayerStatsOverview | null>(null);
+  const [statsSeasons, setStatsSeasons] = useState<SeasonInfo[]>([]);
+  const [statsSelectedSeason, setSelectedSeason] = useState<string | undefined>(undefined);
+  const [matchRows, setMatchRows] = useState<{ matchId: string; playerName: string; loading: boolean; detail: MatchDetail | null; error: boolean }[]>([]);
+  const [selectedMatch, setSelectedMatch] = useState<MatchDetail | null>(null);
+  const [statsCurrentPage, setStatsCurrentPage] = useState(1);
+  const autoLoadedRef = useRef<string>('');
+  const matchLoadTriggeredRef = useRef(false);
 
   const load = () => {
     if (!date) return;
@@ -29,6 +38,14 @@ export default function EventDetailPage() {
   };
 
   useEffect(() => { load(); }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    getSeasons().then((res) => {
+      setStatsSeasons(res.data);
+      const current = res.data.find((s) => s.isCurrentSeason);
+      if (current) setSelectedSeason(current.id);
+    }).catch(() => {});
+  }, []);
 
   const handleRegister = async (values: { name: string }) => {
     if (!date) return;
@@ -124,12 +141,45 @@ export default function EventDetailPage() {
   const handleOpenStats = (name: string) => {
     setStatsModal(name);
     setStatsData(null);
+    setMatchRows([]);
+    setStatsCurrentPage(1);
     setStatsLoading(true);
-    getPlayerStats(name)
-      .then((res) => setStatsData(res.data))
+    matchLoadTriggeredRef.current = false;
+    getPlayerStats(name, statsSelectedSeason)
+      .then((res) => {
+        const data = res.data;
+        setStatsData(data);
+        const rows = data.recentMatchIds.map((id) => ({
+          matchId: id, playerName: data.playerName, loading: false, detail: null as MatchDetail | null, error: false,
+        }));
+        setMatchRows(rows);
+        autoLoadedRef.current = data.recentMatchIds[0] ?? '';
+      })
       .catch(() => setStatsData(null))
       .finally(() => setStatsLoading(false));
   };
+
+  const loadMatchDetail = useCallback(async (matchId: string, playerName: string, index: number) => {
+    setMatchRows((prev) => prev.map((r, i) => i === index ? { ...r, loading: true } : r));
+    try {
+      const res = await getMatchDetail(matchId, playerName);
+      setMatchRows((prev) => prev.map((r, i) => i === index ? { ...r, loading: false, detail: res.data } : r));
+    } catch {
+      setMatchRows((prev) => prev.map((r, i) => i === index ? { ...r, loading: false, error: true } : r));
+    }
+  }, []);
+
+  // 自动加载对局详情
+  useEffect(() => {
+    if (matchRows.length === 0 || matchLoadTriggeredRef.current) return;
+    if (autoLoadedRef.current !== matchRows[0]?.matchId) return;
+    matchLoadTriggeredRef.current = true;
+    matchRows.forEach((row, i) => {
+      setTimeout(() => loadMatchDetail(row.matchId, row.playerName, i), i * 800);
+    });
+    autoLoadedRef.current = '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLoadedRef.current]);
 
   if (regResult) {
     return (
@@ -198,6 +248,14 @@ export default function EventDetailPage() {
     const deadlineStr = `${ev.eventDate}T${ev.startTime}`;
     return new Date() >= new Date(deadlineStr);
   })();
+
+  // 战绩弹窗 — 对局列表相关
+  const loadedRows = matchRows.filter((r) => r.detail !== null);
+  const pageSize = 10;
+  const pagedRows = matchRows.slice((statsCurrentPage - 1) * pageSize, statsCurrentPage * pageSize);
+
+  // 注册对局详情弹窗回调
+  (window as unknown as Record<string, (m: MatchDetail) => void>).__openMatchDetail = setSelectedMatch;
 
   return (
     <div className="page-wrap">
@@ -459,31 +517,78 @@ export default function EventDetailPage() {
         <Modal
           title={<span><TrophyOutlined style={{ marginRight: 8, color: '#f0a500' }} />{statsModal} 战绩</span>}
           open={!!statsModal}
-          onCancel={() => { setStatsModal(null); setStatsData(null); }}
+          onCancel={() => { setStatsModal(null); setStatsData(null); setMatchRows([]); matchLoadTriggeredRef.current = false; }}
           footer={null}
           destroyOnClose
+          width={720}
         >
           {statsLoading ? (
-            <div style={{ textAlign: 'center', padding: 32 }}>加载中...</div>
+            <div style={{ textAlign: 'center', padding: 32 }}><Spin size="large" /></div>
           ) : statsData ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-muted)' }}>游戏名</span>
-                <span>{statsData.playerName}</span>
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <span style={{ color: 'var(--primary)', fontWeight: 700, fontSize: 16 }}>{statsData.playerName}</span>
+                {statsSeasons.length > 0 && (
+                  <Space>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>赛季：</span>
+                    <Select
+                      style={{ minWidth: 120 }}
+                      size="small"
+                      value={statsSelectedSeason}
+                      onChange={(val) => { setSelectedSeason(val); handleOpenStats(statsModal!); }}
+                      options={statsSeasons.map((s) => ({
+                        label: seasonLabel(s.id) + (s.isCurrentSeason ? ' (当前)' : ''),
+                        value: s.id,
+                      }))}
+                    />
+                  </Space>
+                )}
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-muted)' }}>总场次</span>
-                <span>{statsData.matches}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-muted)' }}>KDA</span>
-                <span>{statsData.kda.toFixed(2)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-muted)' }}>场均伤害</span>
-                <span>{Math.round(statsData.avgDamage)}</span>
-              </div>
-            </div>
+              <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+                <Col xs={12} sm={6}><Statistic title="场次" value={statsData.matches} /></Col>
+                <Col xs={12} sm={6}><Statistic title="KDA" value={statsData.kda.toFixed(2)} /></Col>
+                <Col xs={12} sm={6}><Statistic title="总击杀" value={statsData.kills} /></Col>
+                <Col xs={12} sm={6}><Statistic title="均伤" value={Math.round(statsData.avgDamage)} /></Col>
+                <Col xs={12} sm={6}><Statistic title="总助攻" value={statsData.assists} /></Col>
+                <Col xs={12} sm={6}><Statistic title="总死亡" value={statsData.deaths} /></Col>
+                <Col xs={12} sm={6}><Statistic title="总伤害" value={Math.round(statsData.totalDamage)} /></Col>
+              </Row>
+
+              {matchRows.length > 0 && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div className="section-label">近期对局</div>
+                    {loadedRows.length < matchRows.length && (
+                      <Progress
+                        percent={Math.round(loadedRows.length / matchRows.length * 100)}
+                        size="small"
+                        style={{ width: 120 }}
+                        format={() => `${loadedRows.length}/${matchRows.length}`}
+                      />
+                    )}
+                  </div>
+                  <Table
+                    dataSource={pagedRows}
+                    columns={matchColumns}
+                    rowKey="matchId"
+                    pagination={false}
+                    size="small"
+                    scroll={{ x: 560 }}
+                  />
+                  {matchRows.length > pageSize && (
+                    <div style={{ textAlign: 'center', marginTop: 12 }}>
+                      <Pagination
+                        current={statsCurrentPage}
+                        pageSize={pageSize}
+                        total={matchRows.length}
+                        onChange={(page) => setStatsCurrentPage(page)}
+                        simple
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </>
           ) : (
             <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>
               未找到该玩家的战绩数据
@@ -491,7 +596,199 @@ export default function EventDetailPage() {
           )}
         </Modal>
 
+        {/* Match Detail Modal */}
+        <Modal
+          open={!!selectedMatch}
+          onCancel={() => setSelectedMatch(null)}
+          footer={<Button onClick={() => setSelectedMatch(null)}>关闭</Button>}
+          title={selectedMatch ? `比赛详情 · #${selectedMatch.playerRank}/${selectedMatch.totalTeams}` : ''}
+          width={700}
+        >
+          {selectedMatch && <MatchDetailView match={selectedMatch} />}
+        </Modal>
+
       </div>
     </div>
+  );
+}
+
+// ─── 战绩弹窗共享组件 ─────────────────────────────────────────
+
+const gameModeLabel: Record<string, string> = {
+  'squad-fpp': '四排FPP', 'squad': '四排TPP',
+  'duo-fpp': '双排FPP', 'duo': '双排TPP',
+  'solo-fpp': '单排FPP', 'solo': '单排TPP',
+};
+
+const mapNameLabel: Record<string, string> = {
+  'Baltic_Main': '艾伦格', 'Erangel_Main': '艾伦格',
+  'Desert_Main': '米拉玛', 'Savage_Main': '萨诺',
+  'DihorOtok_Main': '维肯迪', 'Summerland_Main': '卡拉金',
+  'Range_Main': '训练场', 'Kiki_Main': '德斯顿',
+  'Tiger_Main': '塔戈', 'Neon_Main': '荣光',
+  'Heaven_Main': '里维拉', 'Chimera_Main': '帕拉莫',
+  'Rondo_Main': '荣耀', 'LaboratoryMain': '绝境岛',
+  'Shipment_Main': '战舰',
+};
+
+const rankColor = (rank: number) => {
+  if (rank === 1) return '#f5a623';
+  if (rank <= 5) return '#f0a500';
+  if (rank <= 10) return '#4a9e4a';
+  return '#555';
+};
+
+function formatTime(seconds: number) {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  return `${Math.floor(seconds / 60)}m${Math.round(seconds % 60)}s`;
+}
+
+function formatKm(meters: number) {
+  return `${(meters / 1000).toFixed(1)}km`;
+}
+
+function seasonLabel(id: string) {
+  const parts = id.split('.');
+  const last = parts[parts.length - 1] || id;
+  const numMatch = last.match(/(\d+)$/);
+  if (numMatch) return `第 ${parseInt(numMatch[1], 10)} 赛季`;
+  return last;
+}
+
+interface MatchRow {
+  matchId: string;
+  playerName: string;
+  loading: boolean;
+  detail: MatchDetail | null;
+  error: boolean;
+}
+
+const matchColumns = [
+  {
+    title: '排名', key: 'rank', width: 60,
+    render: (_: unknown, row: MatchRow) => {
+      if (row.loading) return <Spin size="small" />;
+      if (!row.detail) return '-';
+      const r = row.detail.playerRank;
+      return (
+        <div style={{
+          display: 'inline-block', width: 36, height: 36, lineHeight: '36px', textAlign: 'center',
+          borderRadius: 6, background: rankColor(r), color: '#fff', fontWeight: 700, fontSize: 13,
+        }}>
+          #{r}
+        </div>
+      );
+    },
+  },
+  {
+    title: '模式/地图', key: 'mode', width: 90,
+    render: (_: unknown, row: MatchRow) => {
+      if (!row.detail) return '-';
+      return (
+        <Space direction="vertical" size={0}>
+          <Tag color="blue" style={{ fontSize: 11 }}>{gameModeLabel[row.detail.gameMode] || row.detail.gameMode}</Tag>
+          <span style={{ fontSize: 11, color: '#888' }}>{mapNameLabel[row.detail.mapName] || row.detail.mapName}</span>
+        </Space>
+      );
+    },
+  },
+  {
+    title: '时间', key: 'time', width: 100,
+    render: (_: unknown, row: MatchRow) => {
+      if (!row.detail) return '-';
+      const start = new Date(row.detail.createdAt);
+      return (
+        <Space direction="vertical" size={0}>
+          <span style={{ fontSize: 12 }}>{start.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}</span>
+          <span style={{ fontSize: 11, color: '#888' }}>{start.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} · {formatTime(row.detail.duration)}</span>
+        </Space>
+      );
+    },
+  },
+  {
+    title: '击杀', key: 'kills', width: 55,
+    render: (_: unknown, row: MatchRow) => {
+      if (!row.detail) return '-';
+      return <span style={{ color: row.detail.player.kills > 0 ? '#f0a500' : '#ccc' }}>{row.detail.player.kills}</span>;
+    },
+  },
+  {
+    title: '击倒', key: 'dbnos', width: 55,
+    render: (_: unknown, row: MatchRow) => !row.detail ? '-' : row.detail.player.dbnos,
+  },
+  {
+    title: '助攻', key: 'assists', width: 55,
+    render: (_: unknown, row: MatchRow) => !row.detail ? '-' : row.detail.player.assists,
+  },
+  {
+    title: '伤害', key: 'damage', width: 65,
+    render: (_: unknown, row: MatchRow) => !row.detail ? '-' : Math.round(row.detail.player.damage),
+  },
+  {
+    title: '生存', key: 'survive', width: 70,
+    render: (_: unknown, row: MatchRow) => !row.detail ? '-' : <span style={{ fontSize: 12 }}>{formatTime(row.detail.player.timeSurvived)}</span>,
+  },
+  {
+    title: '详情', key: 'action', width: 55,
+    render: (_: unknown, row: MatchRow) => {
+      if (!row.detail) return null;
+      return <Button size="small" onClick={() => {
+        // 触发详情弹窗 — 使用全局事件避免组件间状态传递
+        (window as unknown as Record<string, (m: MatchDetail) => void>).__openMatchDetail?.(row.detail!);
+      }}>详情</Button>;
+    },
+  },
+];
+
+function MatchDetailView({ match }: { match: MatchDetail }) {
+  return (
+    <div>
+      <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
+        <Descriptions.Item label="时间">{new Date(match.createdAt).toLocaleString('zh-CN')}</Descriptions.Item>
+        <Descriptions.Item label="模式">{gameModeLabel[match.gameMode] || match.gameMode}</Descriptions.Item>
+        <Descriptions.Item label="地图">{mapNameLabel[match.mapName] || match.mapName}</Descriptions.Item>
+        <Descriptions.Item label="总队伍/玩家">{match.totalTeams} 队 / {match.totalPlayers} 人</Descriptions.Item>
+      </Descriptions>
+      <Divider>我的战绩</Divider>
+      <ParticipantStats p={match.player} highlight />
+      {match.teammates && match.teammates.length > 0 && (
+        <>
+          <Divider>队友</Divider>
+          {match.teammates.map((tm, i) => (
+            <div key={i} style={{ marginBottom: 12 }}>
+              <span style={{ fontWeight: 600, color: '#ccc' }}>{tm.name}</span>
+              <ParticipantStats p={tm} />
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ParticipantStats({ p, highlight }: { p: import('../api').MatchParticipantDetail; highlight?: boolean }) {
+  const color = highlight ? '#f0a500' : '#888';
+  return (
+    <Row gutter={[8, 8]} style={{ marginBottom: 8, padding: 8, background: highlight ? '#1a1a2e' : 'transparent', borderRadius: 6 }}>
+      <Col xs={8} sm={4}><Statistic title="击杀" value={p.kills} valueStyle={{ color, fontSize: 16 }} /></Col>
+      <Col xs={8} sm={4}><Statistic title="击倒" value={p.dbnos} valueStyle={{ fontSize: 16 }} /></Col>
+      <Col xs={8} sm={4}><Statistic title="助攻" value={p.assists} valueStyle={{ fontSize: 16 }} /></Col>
+      <Col xs={12} sm={6}><Statistic title="伤害" value={Math.round(p.damage)} valueStyle={{ fontSize: 16 }} /></Col>
+      <Col xs={12} sm={6}><Statistic title="生存" value={formatTime(p.timeSurvived)} valueStyle={{ fontSize: 16 }} /></Col>
+      <Col xs={8} sm={4}><Statistic title="步行" value={formatKm(p.walkDistance)} valueStyle={{ fontSize: 16 }} /></Col>
+      <Col xs={8} sm={4}><Statistic title="驾驶" value={formatKm(p.rideDistance)} valueStyle={{ fontSize: 16 }} /></Col>
+      <Col xs={8} sm={4}><Statistic title="爆头" value={p.headshotKills} valueStyle={{ fontSize: 16 }} /></Col>
+      <Col xs={8} sm={4}><Statistic title="治疗" value={p.heals} valueStyle={{ fontSize: 16 }} /></Col>
+      <Col xs={8} sm={4}><Statistic title="加速" value={p.boosts} valueStyle={{ fontSize: 16 }} /></Col>
+      <Col xs={8} sm={4}><Statistic title="复活" value={p.revives} valueStyle={{ fontSize: 16 }} /></Col>
+      <Col xs={12} sm={6}>
+        <div style={{ paddingTop: 4 }}>
+          <span style={{ fontSize: 12, color: '#888' }}>状态</span>
+          <div style={{ marginTop: 4 }}>
+            {p.survived ? <Tag color="green">存活</Tag> : <Tag color="default">阵亡</Tag>}
+          </div>
+        </div>
+      </Col>
+    </Row>
   );
 }
