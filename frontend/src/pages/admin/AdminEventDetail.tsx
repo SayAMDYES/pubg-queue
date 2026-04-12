@@ -224,6 +224,7 @@ export default function AdminEventDetail() {
               ]}
               pagination={false}
               size="small"
+              scroll={{ x: 360 }}
               rowKey={(_, idx) => String(idx)}
             />
           </div>
@@ -237,6 +238,7 @@ export default function AdminEventDetail() {
             columns={regColumns}
             pagination={false}
             size="small"
+            scroll={{ x: 640 }}
             rowKey="id"
           />
         </div>
@@ -250,6 +252,7 @@ export default function AdminEventDetail() {
               columns={rankColumns}
               pagination={false}
               size="small"
+              scroll={{ x: 780 }}
               rowKey="RankNo"
             />
           </div>

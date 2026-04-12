@@ -124,6 +124,7 @@ export default function AdminDashboard() {
               rowKey="eventDate"
               pagination={{ pageSize: 20 }}
               size="small"
+              scroll={{ x: 700 }}
             />
           </div>
         )}

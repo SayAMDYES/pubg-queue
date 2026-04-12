@@ -105,6 +105,7 @@ export default function AdminUsers() {
               rowKey="id"
               pagination={{ pageSize: 20 }}
               size="small"
+              scroll={{ x: 680 }}
             />
           </div>
         )}
