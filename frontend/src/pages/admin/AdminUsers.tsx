@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Table, Button, Tag, Space, Input, message, Modal, Spin } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { adminGetUsers, adminDeleteUser, type AdminUserRow } from '../../api';
+import { formatDateTime } from '../../utils';
 
 export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
@@ -62,7 +63,7 @@ export default function AdminUsers() {
       render: (names: string[]) => names.map((n) => <Tag key={n}>{n}</Tag>),
     },
     { title: '报名次数', dataIndex: 'regCount', key: 'regCount' },
-    { title: '注册时间', dataIndex: 'createdAt', key: 'createdAt' },
+    { title: '注册时间', dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => formatDateTime(v) },
     {
       title: '操作',
       key: 'actions',

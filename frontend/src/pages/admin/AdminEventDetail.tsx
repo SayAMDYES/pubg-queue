@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Table, Tag, Button, Space, message, Modal, Spin, Descriptions } from 'antd';
-import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, DeleteOutlined } from '@ant-design/icons';
-import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, type AdminEventDetailData } from '../../api';
+import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, DeleteOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
+import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, adminStartEvent, adminEndEvent, type AdminEventDetailData } from '../../api';
+import { formatDateTime } from '../../utils';
 
 const rankLabelColors: Record<string, string> = {
   '战神': '#ff4d4f',
@@ -11,6 +12,17 @@ const rankLabelColors: Record<string, string> = {
   '菜鸟': '#52c41a',
   '战犯': '#666',
   '缺席': '#999',
+};
+
+const statusLabel: Record<string, string> = {
+  assigned: '已分配',
+  waitlist: '候补',
+  cancelled: '已取消',
+};
+const statusColor: Record<string, string> = {
+  assigned: 'green',
+  waitlist: 'orange',
+  cancelled: 'red',
 };
 
 export default function AdminEventDetail() {
@@ -32,6 +44,14 @@ export default function AdminEventDetail() {
   };
 
   useEffect(() => { load(); }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-refresh rankings once on load if pubgEnabled and no rankings yet
+  useEffect(() => {
+    if (!date || !data) return;
+    if (data.pubgEnabled && (!data.rankings || data.rankings.length === 0)) {
+      adminRefreshRankings(date).catch(() => { /* silent */ });
+    }
+  }, [date, data?.pubgEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClear = () => {
     Modal.confirm({
@@ -78,6 +98,26 @@ export default function AdminEventDetail() {
     }
   };
 
+  const handleStart = async () => {
+    try {
+      await adminStartEvent(date!);
+      message.success('开始时间已记录');
+      load();
+    } catch (err: unknown) {
+      message.error(err instanceof Error ? err.message : '操作失败');
+    }
+  };
+
+  const handleEnd = async () => {
+    try {
+      await adminEndEvent(date!);
+      message.success('结束时间已记录，战绩刷新已自动触发');
+      load();
+    } catch (err: unknown) {
+      message.error(err instanceof Error ? err.message : '操作失败');
+    }
+  };
+
   if (loading || !data) {
     return <div className="page-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin size="large" /></div>;
   }
@@ -92,11 +132,11 @@ export default function AdminEventDetail() {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (s: string) => <Tag color={s === 'assigned' ? 'green' : s === 'waitlist' ? 'orange' : 'red'}>{s}</Tag>,
+      render: (s: string) => <Tag color={statusColor[s] || 'default'}>{statusLabel[s] || s}</Tag>,
     },
     { title: '队伍', dataIndex: 'teamNo', key: 'teamNo' },
     { title: '位置', dataIndex: 'slotNo', key: 'slotNo' },
-    { title: '报名时间', dataIndex: 'createdAt', key: 'createdAt' },
+    { title: '报名时间', dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => formatDateTime(v) },
   ];
 
   const rankColumns = [
@@ -141,7 +181,9 @@ export default function AdminEventDetail() {
         <Space wrap style={{ marginBottom: 20 }}>
           <Button icon={<DownloadOutlined />} onClick={() => window.open(`/api/admin/events/${date}/export`, '_blank')}>导出 CSV</Button>
           <Button onClick={() => navigate(`/admin/events/${date}/edit`)}>编辑活动</Button>
-          {pubgEnabled && <Button icon={<ReloadOutlined />} onClick={handleRefreshRankings}>刷新战绩</Button>}
+          <Button icon={<PlayCircleOutlined />} onClick={handleStart}>记录开始时间</Button>
+          <Button icon={<StopOutlined />} onClick={handleEnd}>记录结束时间</Button>
+          {pubgEnabled && <Button icon={<ReloadOutlined />} onClick={handleRefreshRankings}>重新计算战绩</Button>}
           <Button icon={<ClearOutlined />} danger onClick={handleClear}>清空报名</Button>
           <Button icon={<DeleteOutlined />} danger type="primary" onClick={handleDelete}>删除活动</Button>
         </Space>

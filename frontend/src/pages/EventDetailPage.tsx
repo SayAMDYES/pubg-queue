@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Form, Input, Button, Select, message, Spin, Popconfirm, Tooltip } from 'antd';
-import { CopyOutlined, ArrowLeftOutlined, UserAddOutlined, LogoutOutlined, UserOutlined, LoginOutlined } from '@ant-design/icons';
-import { getEventDetail, registerEvent, leaveEvent, userLogout, type EventDetailData, type RegisterResult, type LeaveResult } from '../api';
+import { Form, Input, Button, Select, message, Spin, Popconfirm, Tooltip, Modal } from 'antd';
+import { CopyOutlined, ArrowLeftOutlined, UserAddOutlined, LogoutOutlined, UserOutlined, LoginOutlined, TrophyOutlined } from '@ant-design/icons';
+import { getEventDetail, registerEvent, leaveEvent, userLogout, getPlayerStats, type EventDetailData, type RegisterResult, type LeaveResult } from '../api';
 
 export default function EventDetailPage() {
   const { date } = useParams<{ date: string }>();
@@ -14,6 +14,10 @@ export default function EventDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [regForm] = Form.useForm();
   const [leaveForm] = Form.useForm();
+  const [statsModal, setStatsModal] = useState<string | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [statsData, setStatsData] = useState<any>(null);
 
   const load = () => {
     if (!date) return;
@@ -93,7 +97,38 @@ export default function EventDetailPage() {
     if (!data) return;
     const ev = data.event;
     const text = `🐔 PUBG 开黑召集令！\n📅 日期：${ev.eventDate}${ev.startTime ? `\n⏰ 时间：${ev.startTime}` : ''}\n👥 已报名：${data.registeredCount}/${data.capacity}\n${ev.note ? `📝 ${ev.note}\n` : ''}\n🔗 立即报名：${window.location.href}`;
-    navigator.clipboard.writeText(text).then(() => message.success('邀请文案已复制！'));
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(() => message.success('邀请文案已复制！')).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  };
+
+  const fallbackCopy = (text: string) => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+      document.execCommand('copy');
+      message.success('邀请文案已复制！');
+    } catch {
+      message.error('复制失败，请手动复制');
+    }
+    document.body.removeChild(ta);
+  };
+
+  const handleOpenStats = (name: string) => {
+    setStatsModal(name);
+    setStatsData(null);
+    setStatsLoading(true);
+    getPlayerStats(name)
+      .then((res) => setStatsData(res.data))
+      .catch(() => setStatsData(null))
+      .finally(() => setStatsLoading(false));
   };
 
   if (regResult) {
@@ -152,10 +187,17 @@ export default function EventDetailPage() {
     );
   }
 
-  const { event: ev, teams, waitlist, gameNames, pubgEnabled, userLoggedIn, userPhone } = data;
+  const { event: ev, teams, waitlist, gameNames, pubgEnabled, userLoggedIn, userPhone, userRegistered, userStatus, userTeamNo, userSlotNo } = data;
 
   const statusColor = !ev.open ? 'var(--text-muted)' : data.registeredCount >= data.capacity ? 'var(--danger)' : 'var(--success)';
   const statusLabel = !ev.open ? '已关闭' : data.registeredCount >= data.capacity ? '已满员' : '报名开放';
+
+  // 截止时间判断：若活动有开始时间且已过开始时间，则不允许报名/离队
+  const isPastDeadline = (() => {
+    if (!ev.startTime) return false;
+    const deadlineStr = `${ev.eventDate}T${ev.startTime}`;
+    return new Date() >= new Date(deadlineStr);
+  })();
 
   return (
     <div className="page-wrap">
@@ -248,26 +290,57 @@ export default function EventDetailPage() {
                 </svg>
                 第 {team.teamNo} 队
               </div>
-              {team.slots.map((slot, idx) => (
-                <div key={idx} className={`team-slot${!slot.filled ? ' team-slot--empty' : ''}`}>
-                  <span className="team-slot__no">{slot.slotNo}</span>
-                  <span className="team-slot__name">
-                    {slot.filled ? slot.name : '— 空位 —'}
-                  </span>
-                  {slot.filled && (
-                    <>
-                      <span className="team-slot__phone">{slot.phone}</span>
-                      {pubgEnabled && slot.stats?.found && (
-                        <Tooltip title={`场次: ${slot.stats.matches} | KDA: ${slot.stats.kda.toFixed(2)}`}>
-                          <span className="team-slot__tag team-slot__tag--gold">
-                            {slot.stats.matches}场 {slot.stats.kda.toFixed(1)}KDA
-                          </span>
-                        </Tooltip>
-                      )}
-                    </>
-                  )}
-                </div>
-              ))}
+              {team.slots.map((slot, idx) => {
+                const isMySlot = userLoggedIn && userRegistered && userStatus === 'assigned'
+                  && userTeamNo === slot.teamNo && userSlotNo === slot.slotNo;
+                return (
+                  <div key={idx} className={`team-slot${!slot.filled ? ' team-slot--empty' : ''}`}>
+                    <span className="team-slot__no">{slot.slotNo}</span>
+                    <span
+                      className="team-slot__name"
+                      style={pubgEnabled && slot.filled ? { cursor: 'pointer', textDecoration: 'underline dotted' } : undefined}
+                      onClick={pubgEnabled && slot.filled ? () => handleOpenStats(slot.name) : undefined}
+                    >
+                      {slot.filled ? slot.name : '— 空位 —'}
+                    </span>
+                    {slot.filled && (
+                      <>
+                        <span className="team-slot__phone">{slot.phone}</span>
+                        {pubgEnabled && slot.stats?.found && (
+                          <Tooltip title={`场次: ${slot.stats.matches} | KDA: ${slot.stats.kda.toFixed(2)}`}>
+                            <span
+                              className="team-slot__tag team-slot__tag--gold"
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => handleOpenStats(slot.name)}
+                            >
+                              <TrophyOutlined style={{ marginRight: 2 }} />
+                              {slot.stats.matches}场 {slot.stats.kda.toFixed(1)}KDA
+                            </span>
+                          </Tooltip>
+                        )}
+                        {isMySlot && !isPastDeadline && (
+                          <Popconfirm
+                            title="确认离队？"
+                            description="离队后将失去当前位置，候补玩家会自动递补。"
+                            onConfirm={handleLeaveWithSession}
+                            okText="确认离队"
+                            cancelText="取消"
+                          >
+                            <Button
+                              size="small"
+                              danger
+                              loading={submitting}
+                              style={{ marginLeft: 4, fontSize: 11, height: 20, padding: '0 6px' }}
+                            >
+                              离队
+                            </Button>
+                          </Popconfirm>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>
@@ -290,7 +363,7 @@ export default function EventDetailPage() {
         )}
 
         {/* Register */}
-        {ev.open && (
+        {ev.open && !userRegistered && !isPastDeadline && (
           <div className="g-card" style={{ marginBottom: 12 }}>
             <div className="g-card__header">
               <UserAddOutlined />
@@ -337,48 +410,86 @@ export default function EventDetailPage() {
           </div>
         )}
 
-        {/* Leave */}
-        <div className="g-card">
-          <div className="g-card__header">
-            <LogoutOutlined />
-            退出报名
+        {/* Leave — only show for waitlist users or non-logged-in; assigned users have inline leave button */}
+        {!isPastDeadline && (userRegistered ? userStatus === 'waitlist' : true) && (
+          <div className="g-card">
+            <div className="g-card__header">
+              <LogoutOutlined />
+              退出报名
+            </div>
+            {userLoggedIn ? (
+              <>
+                <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+                  {userStatus === 'waitlist' ? '您当前在候补列表，点击确认可退出。' : '已登录，点击确认即可离队，系统会自动递补候补。'}
+                </p>
+                <Popconfirm
+                  title="确认离队？"
+                  description="离队后将失去当前位置，候补玩家会自动递补。"
+                  onConfirm={handleLeaveWithSession}
+                  okText="确认离队"
+                  cancelText="取消"
+                >
+                  <Button danger loading={submitting} block>
+                    确认离队
+                  </Button>
+                </Popconfirm>
+              </>
+            ) : (
+              <>
+                <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+                  输入报名时使用的手机号和密码即可离队。
+                </p>
+                <Form form={leaveForm} onFinish={handleLeaveWithPassword} layout="vertical">
+                  <Form.Item name="phone" label="手机号" rules={[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号' }]}>
+                    <Input placeholder="手机号" maxLength={11} />
+                  </Form.Item>
+                  <Form.Item name="password" label="密码" rules={[{ required: true, min: 6, message: '密码至少6位' }]} style={{ marginBottom: 12 }}>
+                    <Input.Password placeholder="密码" />
+                  </Form.Item>
+                  <Form.Item style={{ marginBottom: 0 }}>
+                    <Button danger htmlType="submit" loading={submitting} block>确认离队</Button>
+                  </Form.Item>
+                </Form>
+              </>
+            )}
           </div>
-          {userLoggedIn ? (
-            <>
-              <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
-                已登录，点击确认即可离队，系统会自动递补候补。
-              </p>
-              <Popconfirm
-                title="确认离队？"
-                description="离队后将失去当前位置，候补玩家会自动递补。"
-                onConfirm={handleLeaveWithSession}
-                okText="确认离队"
-                cancelText="取消"
-              >
-                <Button danger loading={submitting} block>
-                  确认离队
-                </Button>
-              </Popconfirm>
-            </>
+        )}
+
+        {/* Stats Modal */}
+        <Modal
+          title={<span><TrophyOutlined style={{ marginRight: 8, color: '#f0a500' }} />{statsModal} 战绩</span>}
+          open={!!statsModal}
+          onCancel={() => { setStatsModal(null); setStatsData(null); }}
+          footer={null}
+          destroyOnClose
+        >
+          {statsLoading ? (
+            <div style={{ textAlign: 'center', padding: 32 }}>加载中...</div>
+          ) : statsData ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>游戏名</span>
+                <span>{statsData.playerName}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>总场次</span>
+                <span>{statsData.matches}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>KDA</span>
+                <span>{statsData.kda.toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>场均伤害</span>
+                <span>{Math.round(statsData.avgDamage)}</span>
+              </div>
+            </div>
           ) : (
-            <>
-              <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
-                输入报名时使用的手机号和密码即可离队。
-              </p>
-              <Form form={leaveForm} onFinish={handleLeaveWithPassword} layout="vertical">
-                <Form.Item name="phone" label="手机号" rules={[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号' }]}>
-                  <Input placeholder="手机号" maxLength={11} />
-                </Form.Item>
-                <Form.Item name="password" label="密码" rules={[{ required: true, min: 6, message: '密码至少6位' }]} style={{ marginBottom: 12 }}>
-                  <Input.Password placeholder="密码" />
-                </Form.Item>
-                <Form.Item style={{ marginBottom: 0 }}>
-                  <Button danger htmlType="submit" loading={submitting} block>确认离队</Button>
-                </Form.Item>
-              </Form>
-            </>
+            <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>
+              未找到该玩家的战绩数据
+            </div>
           )}
-        </div>
+        </Modal>
 
       </div>
     </div>

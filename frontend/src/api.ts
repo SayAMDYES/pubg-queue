@@ -75,6 +75,10 @@ export interface EventDetailData {
   pubgEnabled: boolean;
   registeredCount: number;
   capacity: number;
+  userRegistered: boolean;
+  userStatus: string;
+  userTeamNo: number;
+  userSlotNo: number;
 }
 
 export const getEventDetail = (date: string) =>
@@ -201,6 +205,12 @@ export const adminDeleteEvent = (date: string) =>
 export const adminRefreshRankings = (date: string) =>
   request.post<unknown, ApiResponse<{ msg: string }>>(`/admin/events/${date}/refresh-rankings`);
 
+export const adminStartEvent = (date: string) =>
+  request.post<unknown, ApiResponse<{ actualStart: string }>>(`/admin/events/${date}/start`);
+
+export const adminEndEvent = (date: string) =>
+  request.post<unknown, ApiResponse<{ actualEnd: string }>>(`/admin/events/${date}/end`);
+
 // ─── 管理 - 用户 ──────────────────────────────────────────
 
 export interface AdminUserRow {
@@ -236,6 +246,7 @@ export const adminUpdateUser = (id: number, data: {
   phone: string;
   deleteGameNames: string[];
   newGameName: string;
+  renameGameNames?: { old: string; new: string }[];
 }) => request.put<unknown, ApiResponse<null>>(`/admin/users/${id}`, data);
 
 export const adminDeleteUser = (id: number) =>

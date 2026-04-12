@@ -99,6 +99,8 @@ func main() {
 			r.With(authMW.RequireAdminAPI).Post("/events/{date}/clear", adminH.ClearEvent)
 			r.With(authMW.RequireAdminAPI).Delete("/events/{date}", adminH.DeleteEvent)
 			r.With(authMW.RequireAdminAPI).Post("/events/{date}/refresh-rankings", adminH.RefreshRankings)
+			r.With(authMW.RequireAdminAPI).Post("/events/{date}/start", adminH.StartEvent)
+			r.With(authMW.RequireAdminAPI).Post("/events/{date}/end", adminH.EndEvent)
 			r.With(authMW.RequireAdminAPI).Get("/events/{date}/export", adminH.ExportCSV)
 			r.With(authMW.RequireAdminAPI).Get("/users", adminH.ListUsers)
 			r.With(authMW.RequireAdminAPI).Get("/users/{id}", adminH.GetUser)

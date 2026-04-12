@@ -155,15 +155,19 @@ type WaitlistEntry struct {
 
 // EventDetailResponse 活动详情响应
 type EventDetailResponse struct {
-	Event           EventInfo      `json:"event"`
-	Teams           []TeamInfo     `json:"teams"`
+	Event           EventInfo       `json:"event"`
+	Teams           []TeamInfo      `json:"teams"`
 	Waitlist        []WaitlistEntry `json:"waitlist"`
-	UserPhone       string         `json:"userPhone"`
-	UserLoggedIn    bool           `json:"userLoggedIn"`
-	GameNames       []string       `json:"gameNames"`
-	PUBGEnabled     bool           `json:"pubgEnabled"`
-	RegisteredCount int            `json:"registeredCount"`
-	Capacity        int            `json:"capacity"`
+	UserPhone       string          `json:"userPhone"`
+	UserLoggedIn    bool            `json:"userLoggedIn"`
+	GameNames       []string        `json:"gameNames"`
+	PUBGEnabled     bool            `json:"pubgEnabled"`
+	RegisteredCount int             `json:"registeredCount"`
+	Capacity        int             `json:"capacity"`
+	UserRegistered  bool            `json:"userRegistered"`
+	UserStatus      string          `json:"userStatus"`
+	UserTeamNo      int             `json:"userTeamNo"`
+	UserSlotNo      int             `json:"userSlotNo"`
 }
 
 // EventInfo 活动基本信息
@@ -266,6 +270,31 @@ func EventDetailHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
 			}
 		}
 
+		// 查询当前用户在该活动中的报名状态
+		var userRegistered bool
+		var userStatus string
+		var userTeamNo, userSlotNo int
+		if userID > 0 {
+			var teamNoPtr, slotNoPtr *int
+			var status string
+			err := db.QueryRow(
+				`SELECT status, team_no, slot_no FROM registrations
+				 WHERE event_id=? AND user_id=? AND status != 'cancelled'
+				 ORDER BY created_at DESC LIMIT 1`,
+				ev.ID, userID,
+			).Scan(&status, &teamNoPtr, &slotNoPtr)
+			if err == nil {
+				userRegistered = true
+				userStatus = status
+				if teamNoPtr != nil {
+					userTeamNo = *teamNoPtr
+				}
+				if slotNoPtr != nil {
+					userSlotNo = *slotNoPtr
+				}
+			}
+		}
+
 		if waitlist == nil {
 			waitlist = []WaitlistEntry{}
 		}
@@ -293,6 +322,10 @@ func EventDetailHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
 			PUBGEnabled:     pubgEnabled,
 			RegisteredCount: registeredCount,
 			Capacity:        capacity,
+			UserRegistered:  userRegistered,
+			UserStatus:      userStatus,
+			UserTeamNo:      userTeamNo,
+			UserSlotNo:      userSlotNo,
 		}
 		Success(w, resp)
 	}

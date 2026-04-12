@@ -512,6 +512,84 @@ func (a *AdminAPI) RefreshRankings(w http.ResponseWriter, r *http.Request) {
 	Success(w, map[string]string{"msg": "ranking_refresh_started"})
 }
 
+// StartEvent 快捷记录活动实际开始时间
+func (a *AdminAPI) StartEvent(w http.ResponseWriter, r *http.Request) {
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	if loc == nil {
+		loc = time.UTC
+	}
+	now := time.Now().In(loc).Format("2006-01-02T15:04")
+
+	res, err := a.db.Exec(
+		`UPDATE events SET actual_start=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE event_date=?`,
+		now, date,
+	)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "更新失败")
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		Error(w, http.StatusNotFound, "活动不存在")
+		return
+	}
+	Success(w, map[string]string{"actualStart": now})
+}
+
+// EndEvent 快捷记录活动实际结束时间，并自动触发战绩刷新
+func (a *AdminAPI) EndEvent(w http.ResponseWriter, r *http.Request) {
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	if loc == nil {
+		loc = time.UTC
+	}
+	now := time.Now().In(loc).Format("2006-01-02T15:04")
+
+	var eventID int64
+	var actualStart string
+	err := a.db.QueryRow(
+		`SELECT id, COALESCE(actual_start,'') FROM events WHERE event_date=?`, date,
+	).Scan(&eventID, &actualStart)
+	if err != nil {
+		Error(w, http.StatusNotFound, "活动不存在")
+		return
+	}
+
+	if _, err := a.db.Exec(
+		`UPDATE events SET actual_end=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE event_date=?`,
+		now, date,
+	); err != nil {
+		Error(w, http.StatusInternalServerError, "更新失败")
+		return
+	}
+
+	if a.cfg.PUBGAPIKey != "" {
+		client := service.NewPUBGClient(a.cfg.PUBGAPIKey, a.cfg.PUBGShard)
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[PUBG] RefreshEventRankings panic for event %d: %v", eventID, r)
+				}
+			}()
+			if _, err := service.RefreshEventRankings(a.db, client, eventID, actualStart, now); err != nil {
+				log.Printf("[PUBG] RefreshEventRankings error for event %d: %v", eventID, err)
+			}
+		}()
+	}
+
+	Success(w, map[string]string{"actualEnd": now})
+}
+
 // ListUsers 用户列表
 func (a *AdminAPI) ListUsers(w http.ResponseWriter, r *http.Request) {
 	type UserRow struct {
@@ -636,9 +714,13 @@ func (a *AdminAPI) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Phone          string   `json:"phone"`
+		Phone           string `json:"phone"`
 		DeleteGameNames []string `json:"deleteGameNames"`
-		NewGameName    string   `json:"newGameName"`
+		NewGameName     string   `json:"newGameName"`
+		RenameGameNames []struct {
+			Old string `json:"old"`
+			New string `json:"new"`
+		} `json:"renameGameNames"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		Error(w, http.StatusBadRequest, "请求格式错误")
@@ -679,6 +761,13 @@ func (a *AdminAPI) UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 	for _, gn := range req.DeleteGameNames {
 		tx.Exec(`DELETE FROM user_game_names WHERE user_id=? AND game_name=?`, uid, gn)
+	}
+	for _, rn := range req.RenameGameNames {
+		if rn.Old == "" || rn.New == "" || !service.ValidateName(rn.New) {
+			continue
+		}
+		tx.Exec(`UPDATE user_game_names SET game_name=? WHERE user_id=? AND game_name=?`, rn.New, uid, rn.Old)
+		tx.Exec(`UPDATE registrations SET name=? WHERE user_id=? AND name=?`, rn.New, uid, rn.Old)
 	}
 	if req.NewGameName != "" && service.ValidateName(req.NewGameName) {
 		tx.Exec(`
