@@ -530,6 +530,8 @@ func RefreshEventRankings(db *sql.DB, client *PUBGClient, eventID int64, actualS
 	assignRankLabels(entries)
 
 	// Persist to event_rankings
+	// Clear old entries first to handle changed reg_ids
+	db.Exec(`DELETE FROM event_rankings WHERE event_id=?`, eventID)
 	now := time.Now().Format(time.RFC3339)
 	for _, e := range entries {
 		db.Exec(`

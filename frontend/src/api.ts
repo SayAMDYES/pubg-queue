@@ -57,6 +57,7 @@ export interface EventInfo {
   id: number;
   eventDate: string;
   open: boolean;
+  ended: boolean;
   teamCount: number;
   note: string;
   startTime: string;
@@ -121,6 +122,7 @@ export interface AdminEventRow {
   id: number;
   eventDate: string;
   open: boolean;
+  ended: boolean;
   teamCount: number;
   note: string;
   startTime: string;

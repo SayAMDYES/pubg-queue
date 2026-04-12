@@ -170,7 +170,15 @@ export default function AdminEventDetail() {
         {/* Event info */}
         <div className="g-card" style={{ marginBottom: 16 }}>
           <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-            <Descriptions.Item label="状态"><Tag color={ev.open ? 'green' : 'red'}>{ev.open ? '开放' : '关闭'}</Tag></Descriptions.Item>
+            <Descriptions.Item label="状态">
+              {ev.ended ? (
+                <Tag color="default">已结束</Tag>
+              ) : ev.open ? (
+                <Tag color="green">开放</Tag>
+              ) : (
+                <Tag color="red">关闭</Tag>
+              )}
+            </Descriptions.Item>
             <Descriptions.Item label="队伍数">{ev.teamCount}</Descriptions.Item>
             <Descriptions.Item label="预计时间">{ev.startTime || '-'} ~ {ev.endTime || '-'}</Descriptions.Item>
             <Descriptions.Item label="实际时间">{ev.actualStart || '-'} ~ {ev.actualEnd || '-'}</Descriptions.Item>

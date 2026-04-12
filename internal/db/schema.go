@@ -112,6 +112,7 @@ func Migrate(db *sql.DB) error {
 		`ALTER TABLE events ADD COLUMN actual_start TEXT`,
 		`ALTER TABLE events ADD COLUMN actual_end TEXT`,
 		`ALTER TABLE event_rankings ADD COLUMN deaths INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE events ADD COLUMN ended INTEGER NOT NULL DEFAULT 0`,
 	}
 	for _, s := range alterStmts {
 		if _, err := db.Exec(s); err != nil {

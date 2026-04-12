@@ -86,6 +86,7 @@ func (a *AdminAPI) Dashboard(w http.ResponseWriter, r *http.Request) {
 		EventDate       string `json:"eventDate"`
 		Open            bool   `json:"open"`
 		TeamCount       int    `json:"teamCount"`
+		Ended          bool   `json:"ended"`
 		Note            string `json:"note"`
 		StartTime       string `json:"startTime"`
 		EndTime         string `json:"endTime"`
@@ -98,7 +99,7 @@ func (a *AdminAPI) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := a.db.Query(`
-		SELECT e.id, e.event_date, e.open, e.team_count, COALESCE(e.note,''),
+		SELECT e.id, e.event_date, e.open, COALESCE(e.ended,0), e.team_count, COALESCE(e.note,''),
 			COALESCE(e.start_time,''), COALESCE(e.end_time,''),
 			COALESCE(e.actual_start,''), COALESCE(e.actual_end,''),
 			e.created_at, e.updated_at,
@@ -115,14 +116,15 @@ func (a *AdminAPI) Dashboard(w http.ResponseWriter, r *http.Request) {
 	events := make([]EventRow, 0)
 	for rows.Next() {
 		var ev EventRow
-		var openInt int
-		if err := rows.Scan(&ev.ID, &ev.EventDate, &openInt, &ev.TeamCount, &ev.Note,
+		var openInt, endedInt int
+		if err := rows.Scan(&ev.ID, &ev.EventDate, &openInt,ev.EventDate, &openInt, &endedInt, &ev.TeamCount, &ev.Note,
 			&ev.StartTime, &ev.EndTime, &ev.ActualStart, &ev.ActualEnd,
 			&ev.CreatedAt, &ev.UpdatedAt,
 			&ev.RegisteredCount, &ev.WaitlistCount); err != nil {
 			continue
 		}
 		ev.Open = openInt == 1
+	ev.Ended = endedInt == 1
 		events = append(events, ev)
 	}
 
@@ -413,6 +415,7 @@ func (a *AdminAPI) EventDetail(w http.ResponseWriter, r *http.Request) {
 			EventDate:   ev.EventDate,
 			Open:        ev.Open,
 			TeamCount:   ev.TeamCount,
+				Ended:      ev.Ended,
 			Note:        ev.Note,
 			StartTime:   ev.StartTime,
 			EndTime:     ev.EndTime,
@@ -697,7 +700,7 @@ func (a *AdminAPI) EndEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := a.db.Exec(
-		`UPDATE events SET actual_end=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE event_date=?`,
+		`UPDATE events SET actual_end=?, open=0, ended=1, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE event_date=?`,
 		now, date,
 	); err != nil {
 		Error(w, http.StatusInternalServerError, "更新失败")

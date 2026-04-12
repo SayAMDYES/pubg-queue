@@ -4,6 +4,7 @@ type Event struct {
 	ID          int64
 	EventDate   string
 	Open        bool
+	Ended       bool
 	TeamCount   int
 	Note        string
 	StartTime   string // HH:MM 格式，例如 "20:00"，可为空

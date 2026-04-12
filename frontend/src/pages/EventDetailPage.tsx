@@ -239,8 +239,8 @@ export default function EventDetailPage() {
 
   const { event: ev, teams, waitlist, gameNames, pubgEnabled, userLoggedIn, userPhone, userRegistered, userStatus, userTeamNo, userSlotNo } = data;
 
-  const statusColor = !ev.open ? 'var(--text-muted)' : data.registeredCount >= data.capacity ? 'var(--danger)' : 'var(--success)';
-  const statusLabel = !ev.open ? '已关闭' : data.registeredCount >= data.capacity ? '已满员' : '报名开放';
+  const statusColor = ev.ended ? 'var(--text-dim)' : !ev.open ? 'var(--text-muted)' : data.registeredCount >= data.capacity ? 'var(--danger)' : 'var(--success)';
+  const statusLabel = ev.ended ? '已结束' : !ev.open ? '已关闭' : data.registeredCount >= data.capacity ? '已满员' : '报名开放';
 
   // 截止时间判断：若活动有开始时间且已过开始时间，则不允许报名/离队
   const isPastDeadline = (() => {

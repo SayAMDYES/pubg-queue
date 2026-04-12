@@ -15,17 +15,18 @@ func validateDate(date string) bool {
 
 func getEventByDate(db *sql.DB, date string) (model.Event, error) {
 	var ev model.Event
-	var openInt int
+	var openInt, endedInt int
 	err := db.QueryRow(
-		`SELECT id, event_date, open, team_count, COALESCE(note,''), COALESCE(start_time,''), COALESCE(end_time,''),
+		`SELECT id, event_date, open, COALESCE(ended,0), team_count, COALESCE(note,''), COALESCE(start_time,''), COALESCE(end_time,''),
 		 COALESCE(actual_start,''), COALESCE(actual_end,'') FROM events WHERE event_date=?`,
 		date,
-	).Scan(&ev.ID, &ev.EventDate, &openInt, &ev.TeamCount, &ev.Note,
+	).Scan(&ev.ID, &ev.EventDate, &openInt, &endedInt, &ev.TeamCount, &ev.Note,
 		&ev.StartTime, &ev.EndTime, &ev.ActualStart, &ev.ActualEnd)
 	if err != nil {
 		return ev, err
 	}
 	ev.Open = openInt == 1
+	ev.Ended = endedInt == 1
 	return ev, nil
 }
 

@@ -69,9 +69,11 @@ export default function AdminDashboard() {
     },
     {
       title: '状态',
-      dataIndex: 'open',
-      key: 'open',
-      render: (open: boolean) => open ? <Tag color="green">开放</Tag> : <Tag color="red">关闭</Tag>,
+      key: 'status',
+      render: (_: unknown, record: AdminEventRow) => {
+        if (record.ended) return <Tag color="default">已结束</Tag>;
+        return record.open ? <Tag color="green">开放</Tag> : <Tag color="red">关闭</Tag>;
+      },
     },
     { title: '队伍数', dataIndex: 'teamCount', key: 'teamCount' },
     {

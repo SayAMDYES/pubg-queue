@@ -175,6 +175,7 @@ type EventInfo struct {
 	ID          int64  `json:"id"`
 	EventDate   string `json:"eventDate"`
 	Open        bool   `json:"open"`
+	Ended      bool   `json:"ended"`
 	TeamCount   int    `json:"teamCount"`
 	Note        string `json:"note"`
 	StartTime   string `json:"startTime"`
@@ -307,6 +308,7 @@ func EventDetailHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
 				ID:          ev.ID,
 				EventDate:   ev.EventDate,
 				Open:        ev.Open,
+				Ended:      ev.Ended,
 				TeamCount:   ev.TeamCount,
 				Note:        ev.Note,
 				StartTime:   ev.StartTime,
