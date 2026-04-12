@@ -107,6 +107,9 @@ func main() {
 			r.With(authMW.RequireAdminAPI).Put("/users/{id}", adminH.UpdateUser)
 			r.With(authMW.RequireAdminAPI).Delete("/users/{id}", adminH.DeleteUser)
 			r.With(authMW.RequireAdminAPI).Post("/users/{id}/reset-password", adminH.ResetUserPassword)
+			r.With(authMW.RequireAdminAPI).Post("/users/{id}/game-names", adminH.AddGameName)
+			r.With(authMW.RequireAdminAPI).Put("/users/{id}/game-names", adminH.UpdateGameName)
+			r.With(authMW.RequireAdminAPI).Delete("/users/{id}/game-names/{name}", adminH.DeleteGameName)
 		})
 	})
 

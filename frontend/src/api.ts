@@ -242,12 +242,17 @@ export interface AdminUserDetail {
 export const adminGetUser = (id: number) =>
   request.get<unknown, ApiResponse<AdminUserDetail>>(`/admin/users/${id}`);
 
-export const adminUpdateUser = (id: number, data: {
-  phone: string;
-  deleteGameNames: string[];
-  newGameName: string;
-  renameGameNames?: { old: string; new: string }[];
-}) => request.put<unknown, ApiResponse<null>>(`/admin/users/${id}`, data);
+export const adminUpdateUser = (id: number, data: { phone: string }) =>
+  request.put<unknown, ApiResponse<null>>(`/admin/users/${id}`, data);
+
+export const adminAddGameName = (id: number, gameName: string) =>
+  request.post<unknown, ApiResponse<null>>(`/admin/users/${id}/game-names`, { gameName });
+
+export const adminUpdateGameName = (id: number, oldName: string, newName: string) =>
+  request.put<unknown, ApiResponse<null>>(`/admin/users/${id}/game-names`, { oldName, newName });
+
+export const adminDeleteGameName = (id: number, name: string) =>
+  request.delete<unknown, ApiResponse<null>>(`/admin/users/${id}/game-names/${encodeURIComponent(name)}`);
 
 export const adminDeleteUser = (id: number) =>
   request.delete<unknown, ApiResponse<null>>(`/admin/users/${id}`);

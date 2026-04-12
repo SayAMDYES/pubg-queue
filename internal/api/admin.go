@@ -704,7 +704,7 @@ func (a *AdminAPI) GetUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// UpdateUser 更新用户
+// UpdateUser 更新用户手机号
 func (a *AdminAPI) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	uid, err := strconv.ParseInt(idStr, 10, 64)
@@ -714,13 +714,7 @@ func (a *AdminAPI) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Phone           string `json:"phone"`
-		DeleteGameNames []string `json:"deleteGameNames"`
-		NewGameName     string   `json:"newGameName"`
-		RenameGameNames []struct {
-			Old string `json:"old"`
-			New string `json:"new"`
-		} `json:"renameGameNames"`
+		Phone string `json:"phone"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		Error(w, http.StatusBadRequest, "请求格式错误")
@@ -757,29 +751,159 @@ func (a *AdminAPI) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "更新失败")
 		return
 	}
-	tx.Exec(`UPDATE registrations SET phone=? WHERE user_id=? AND status != 'cancelled'`, req.Phone, uid)
-
-	for _, gn := range req.DeleteGameNames {
-		tx.Exec(`DELETE FROM user_game_names WHERE user_id=? AND game_name=?`, uid, gn)
-	}
-	for _, rn := range req.RenameGameNames {
-		if rn.Old == "" || rn.New == "" || !service.ValidateName(rn.New) {
-			continue
-		}
-		tx.Exec(`UPDATE user_game_names SET game_name=? WHERE user_id=? AND game_name=?`, rn.New, uid, rn.Old)
-		tx.Exec(`UPDATE registrations SET name=? WHERE user_id=? AND name=?`, rn.New, uid, rn.Old)
-	}
-	if req.NewGameName != "" && service.ValidateName(req.NewGameName) {
-		tx.Exec(`
-			INSERT INTO user_game_names (user_id, game_name, used_count, last_used_at)
-			VALUES (?, ?, 1, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-			ON CONFLICT(user_id, game_name) DO UPDATE SET
-				last_used_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-		`, uid, req.NewGameName)
+	if _, err = tx.Exec(
+		`UPDATE registrations SET phone=? WHERE user_id=? AND status != 'cancelled'`,
+		req.Phone, uid,
+	); err != nil {
+		Error(w, http.StatusInternalServerError, "更新报名记录失败")
+		return
 	}
 
 	if err = tx.Commit(); err != nil {
 		Error(w, http.StatusInternalServerError, "提交失败")
+		return
+	}
+	Success(w, nil)
+}
+
+// AddGameName 新增游戏名
+func (a *AdminAPI) AddGameName(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	uid, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || uid <= 0 {
+		Error(w, http.StatusBadRequest, "无效的用户 ID")
+		return
+	}
+
+	var req struct {
+		GameName string `json:"gameName"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+
+	if !service.ValidateName(req.GameName) {
+		Error(w, http.StatusBadRequest, "游戏名格式错误（仅限中英文、数字、下划线、空格，最长20字符）")
+		return
+	}
+
+	var userExists int
+	if err := a.db.QueryRow(`SELECT 1 FROM users WHERE id=?`, uid).Scan(&userExists); err != nil {
+		Error(w, http.StatusNotFound, "用户不存在")
+		return
+	}
+
+	if _, err := a.db.Exec(`
+		INSERT INTO user_game_names (user_id, game_name, used_count, last_used_at)
+		VALUES (?, ?, 1, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+		ON CONFLICT(user_id, game_name) DO UPDATE SET
+			last_used_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+	`, uid, req.GameName); err != nil {
+		Error(w, http.StatusInternalServerError, "新增游戏名失败")
+		return
+	}
+	Success(w, nil)
+}
+
+// UpdateGameName 重命名游戏名（同步更新历史报名记录）
+func (a *AdminAPI) UpdateGameName(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	uid, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || uid <= 0 {
+		Error(w, http.StatusBadRequest, "无效的用户 ID")
+		return
+	}
+
+	var req struct {
+		OldName string `json:"oldName"`
+		NewName string `json:"newName"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+
+	if req.OldName == "" || req.NewName == "" {
+		Error(w, http.StatusBadRequest, "游戏名不能为空")
+		return
+	}
+	if !service.ValidateName(req.NewName) {
+		Error(w, http.StatusBadRequest, "游戏名格式错误（仅限中英文、数字、下划线、空格，最长20字符）")
+		return
+	}
+	if req.OldName == req.NewName {
+		Success(w, nil)
+		return
+	}
+
+	tx, txErr := a.db.Begin()
+	if txErr != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
+
+	res, execErr := tx.Exec(
+		`UPDATE user_game_names SET game_name=? WHERE user_id=? AND game_name=?`,
+		req.NewName, uid, req.OldName,
+	)
+	if execErr != nil {
+		Error(w, http.StatusInternalServerError, "重命名失败")
+		return
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		Error(w, http.StatusNotFound, "游戏名不存在")
+		return
+	}
+	if _, execErr = tx.Exec(
+		`UPDATE registrations SET name=? WHERE user_id=? AND name=?`,
+		req.NewName, uid, req.OldName,
+	); execErr != nil {
+		Error(w, http.StatusInternalServerError, "同步报名记录失败")
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		Error(w, http.StatusInternalServerError, "提交失败")
+		return
+	}
+	committed = true
+	Success(w, nil)
+}
+
+// DeleteGameName 删除游戏名
+func (a *AdminAPI) DeleteGameName(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	uid, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || uid <= 0 {
+		Error(w, http.StatusBadRequest, "无效的用户 ID")
+		return
+	}
+
+	name := chi.URLParam(r, "name")
+	if name == "" {
+		Error(w, http.StatusBadRequest, "游戏名不能为空")
+		return
+	}
+
+	res, err := a.db.Exec(
+		`DELETE FROM user_game_names WHERE user_id=? AND game_name=?`,
+		uid, name,
+	)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "删除失败")
+		return
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		Error(w, http.StatusNotFound, "游戏名不存在")
 		return
 	}
 	Success(w, nil)
