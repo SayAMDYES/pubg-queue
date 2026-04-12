@@ -246,7 +246,7 @@ export default function AdminUserEdit() {
                 name="newGameName"
                 rules={[
                   { required: true, message: '请输入游戏名' },
-                  { pattern: /^[\w\u4e00-\u9fff\u3400-\u4dbf ]{1,20}$/, message: '游戏名仅限中英文、数字、下划线、空格，最长20字符' },
+                  { pattern: /^[\w\u4e00-\u9fff\u3400-\u4dbf -]{1,20}$/, message: '游戏名仅限中英文、数字、下划线、连字符、空格，最长20字符' },
                 ]}
               >
                 <Input placeholder="新增游戏名" maxLength={20} style={{ width: 180 }} />
