@@ -37,12 +37,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Page Transition ───────────────────────────────────────── */
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ── Page Layout ──────────────────────────────────────────── */
 .page-wrap {
   min-height: 100dvh;
   background: var(--bg);
   position: relative;
   overflow-x: hidden;
+  animation: pageIn 0.2s ease-out;
 }
 
 .page-wrap::before {
@@ -479,9 +486,25 @@ body {
 .flex-gap-8    { display: flex; align-items: center; gap: 8px; }
 .flex-gap-12   { display: flex; align-items: center; gap: 12px; }
 
-/* ── Antd overrides ───────────────────────────────────────── */
+/* ── Antd overrides & Button Animations ───────────────────── */
 .ant-btn {
   font-family: var(--body-font) !important;
+  transition: transform var(--transition), box-shadow var(--transition),
+    background var(--transition), border-color var(--transition) !important;
+}
+
+.ant-btn:not(.ant-btn-loading):not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(240, 165, 0, 0.12);
+}
+
+.ant-btn:not(.ant-btn-loading):not(:disabled):active {
+  transform: translateY(-1px) scale(0.97);
+}
+
+.ant-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .ant-form-item-label > label {
@@ -490,7 +513,39 @@ body {
   letter-spacing: 0.05em;
 }
 
+/* ── Focus-visible ─────────────────────────────────────────── */
+.cal-day--event:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.page-footer__link:focus-visible {
+  outline: 1px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ── Reduced Motion ───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .page-wrap { animation: none; }
+  .ant-btn, .g-card, .cal-day, .team-card, .team-slot, .page-footer__link {
+    transition: none !important;
+  }
+}
+
 /* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .page-title--lg { font-size: 26px; }
+  .stat-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+  .ant-modal {
+    max-width: calc(100vw - 32px) !important;
+  }
+  .ant-modal-content {
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
+}
+
 @media (max-width: 480px) {
   .page-title--lg { font-size: 24px; }
   .teams-grid { grid-template-columns: 1fr; }
@@ -498,4 +553,18 @@ body {
   .cal-day    { min-height: 62px; }
   .cal-day__num { font-size: 12px; }
   .cal-day__status { font-size: 8px; }
+  .ant-modal {
+    max-width: calc(100vw - 24px) !important;
+    top: 12px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .page-inner { padding: 16px 10px 32px; }
+  .cal-day { min-height: 52px; padding: 4px 3px; }
+  .cal-header { font-size: 9px; }
+  .cal-day__time { font-size: 8px; }
+  .cal-day__count { font-size: 8px; }
+  .team-slot { padding: 6px 8px; }
+  .team-slot__name { font-size: 12px; }
 }
