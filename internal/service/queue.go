@@ -11,7 +11,7 @@ import (
 	"regexp"
 )
 
-var nameRe = regexp.MustCompile(`^[a-zA-Z0-9\x{4e00}-\x{9fff}\x{3400}-\x{4dbf}_ ]{1,20}$`)
+var nameRe = regexp.MustCompile(`^[a-zA-Z0-9\x{4e00}-\x{9fff}\x{3400}-\x{4dbf}_ \-]{1,20}$`)
 var phoneRe = regexp.MustCompile(`^1[3-9]\d{9}$`)
 
 const slotsPerTeam = 4
