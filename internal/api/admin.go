@@ -506,8 +506,8 @@ func (a *AdminAPI) ManualRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = a.db.Exec(
-		`INSERT INTO registrations (event_id, name, phone, status, team_no, slot_no) VALUES (?,?,'admin','assigned',?,?)`,
-		ev.ID, req.Name, req.TeamNo, req.SlotNo,
+		`INSERT INTO registrations (event_id, name, phone, status, team_no, slot_no, leave_token_hash, leave_token_salt) VALUES (?,?,'admin','assigned',?,?,?,?)`,
+		ev.ID, req.Name, req.TeamNo, req.SlotNo, "", "",
 	)
 	if err != nil {
 		log.Printf("[Admin] ManualRegister insert error: %v", err)
