@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Spin, message } from 'antd';
 import { LeftOutlined, RightOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
@@ -21,6 +21,10 @@ export default function CalendarPage() {
   const [prevMonth, setPrevMonth] = useState('');
   const [nextMonth, setNextMonth] = useState('');
   const [firstWeekday, setFirstWeekday] = useState(0);
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { user, refresh: refreshUser } = useUserMe();
 
@@ -34,12 +38,24 @@ export default function CalendarPage() {
         setPrevMonth(d.prevMonth);
         setNextMonth(d.nextMonth);
         setFirstWeekday(d.firstWeekday);
+        setYear(d.year);
+        setMonth(d.month);
       })
       .catch(() => message.error('加载日历失败'))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // 点击外部关闭年月选择器
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [pickerOpen]);
 
   const handleLogout = async () => {
     try {
@@ -105,9 +121,50 @@ export default function CalendarPage() {
             onClick={() => load(prevMonth)}
             style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}
           />
-          <span style={{ fontFamily: 'var(--heading-font)', fontSize: 15, letterSpacing: '0.08em', color: 'var(--text)' }}>
-            {monthStr}
-          </span>
+          <div ref={pickerRef} style={{ position: 'relative' }}>
+            <span
+              style={{ fontFamily: 'var(--heading-font)', fontSize: 15, letterSpacing: '0.08em', color: 'var(--text)', cursor: 'pointer', userSelect: 'none' }}
+              onClick={() => setPickerOpen((v) => !v)}
+            >
+              {monthStr} ▾
+            </span>
+            {pickerOpen && (
+              <div style={{
+                position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8,
+                padding: 12, zIndex: 100, minWidth: 220, marginTop: 6,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+              }}>
+                {/* Year selector */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 10 }}>
+                  <span style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, padding: '2px 6px' }} onClick={() => setYear((y) => y - 1)}>◀</span>
+                  <span style={{ color: 'var(--text)', fontWeight: 600, fontSize: 15, minWidth: 40, textAlign: 'center' }}>{year}</span>
+                  <span style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, padding: '2px 6px' }} onClick={() => setYear((y) => y + 1)}>▶</span>
+                </div>
+                {/* Month grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const m = i + 1;
+                    const active = m === month;
+                    return (
+                      <span
+                        key={m}
+                        style={{
+                          textAlign: 'center', padding: '6px 0', borderRadius: 6, cursor: 'pointer', fontSize: 13,
+                          background: active ? 'var(--primary)' : 'transparent',
+                          color: active ? '#fff' : 'var(--text-muted)',
+                          fontWeight: active ? 600 : 400,
+                        }}
+                        onClick={() => { setPickerOpen(false); load(`${year}-${String(m).padStart(2, '0')}`); }}
+                      >
+                        {m}月
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
           <Button
             icon={<RightOutlined />}
             onClick={() => load(nextMonth)}

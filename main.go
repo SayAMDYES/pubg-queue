@@ -102,6 +102,8 @@ func main() {
 			r.With(authMW.RequireAdminAPI).Post("/events/{date}/start", adminH.StartEvent)
 			r.With(authMW.RequireAdminAPI).Post("/events/{date}/end", adminH.EndEvent)
 			r.With(authMW.RequireAdminAPI).Get("/events/{date}/export", adminH.ExportCSV)
+			r.With(authMW.RequireAdminAPI).Post("/events/{date}/manual-register", adminH.ManualRegister)
+			r.With(authMW.RequireAdminAPI).Post("/events/{date}/remove-registration", adminH.RemoveRegistration)
 			r.With(authMW.RequireAdminAPI).Get("/users", adminH.ListUsers)
 			r.With(authMW.RequireAdminAPI).Get("/users/{id}", adminH.GetUser)
 			r.With(authMW.RequireAdminAPI).Put("/users/{id}", adminH.UpdateUser)

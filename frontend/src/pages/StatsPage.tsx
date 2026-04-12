@@ -4,7 +4,7 @@ import {
   Button, AutoComplete, Input, Typography, Space, Spin, Statistic, Row, Col,
   Table, Tag, message, Modal, Descriptions, Divider, Select, Pagination, Progress
 } from 'antd';
-import { ArrowLeftOutlined, SearchOutlined, TrophyOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, SearchOutlined, TrophyOutlined, UserOutlined, LogoutOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   getPlayerStats, getMatchDetail, getSeasons, userLogout,
   type PlayerStatsOverview, type MatchDetail, type MatchParticipantDetail, type SeasonInfo
@@ -416,7 +416,17 @@ export default function StatsPage() {
             {matchRows.length > 0 && (
               <div className="g-card" style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <div className="section-label">近期对局</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div className="section-label">近期对局</div>
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<ReloadOutlined />}
+                      loading={loading}
+                      onClick={handleSearch}
+                      style={{ color: 'var(--text-muted)' }}
+                    />
+                  </div>
                   {loadedRows.length < matchRows.length && (
                     <Progress
                       percent={Math.round(loadedRows.length / matchRows.length * 100)}

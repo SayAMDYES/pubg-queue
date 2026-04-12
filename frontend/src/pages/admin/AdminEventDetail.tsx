@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Table, Tag, Button, Space, message, Modal, Spin, Descriptions } from 'antd';
-import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, DeleteOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
-import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, adminStartEvent, adminEndEvent, type AdminEventDetailData } from '../../api';
+import { Table, Tag, Button, Space, message, Modal, Spin, Descriptions, Input, Popconfirm } from 'antd';
+import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, DeleteOutlined, PlayCircleOutlined, StopOutlined, PlusOutlined, CloseOutlined } from '@ant-design/icons';
+import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, adminStartEvent, adminEndEvent, adminManualRegister, adminRemoveRegistration, type AdminEventDetailData } from '../../api';
 import { formatDateTime } from '../../utils';
 
 const rankLabelColors: Record<string, string> = {
@@ -195,17 +195,12 @@ export default function AdminEventDetail() {
             <div key={team.teamNo} className="g-card">
               <div className="section-label" style={{ marginBottom: 10 }}>第 {team.teamNo} 队</div>
               {team.slots.map((slot, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-                  <span style={{ color: 'var(--text-dim)', width: 20, fontSize: 12 }}>{slot.slotNo}</span>
-                  {slot.filled ? (
-                    <>
-                      <span style={{ color: 'var(--text)', flex: 1 }}>{slot.name}</span>
-                      <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{slot.phone}</span>
-                    </>
-                  ) : (
-                    <span style={{ color: 'var(--text-dim)', fontStyle: 'italic' }}>空位</span>
-                  )}
-                </div>
+                <SlotRow
+                  key={idx}
+                  slot={slot}
+                  date={date!}
+                  onRefresh={load}
+                />
               ))}
             </div>
           ))}
@@ -262,3 +257,75 @@ export default function AdminEventDetail() {
   );
 }
 
+interface SlotRowProps {
+  slot: { teamNo: number; slotNo: number; name: string; phone: string; filled: boolean; regId: number };
+  date: string;
+  onRefresh: () => void;
+}
+
+function SlotRow({ slot, date, onRefresh }: SlotRowProps) {
+  const [editing, setEditing] = useState(false);
+  const [inputVal, setInputVal] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    const name = inputVal.trim();
+    if (!name) return;
+    setSubmitting(true);
+    try {
+      await adminManualRegister(date, { name, teamNo: slot.teamNo, slotNo: slot.slotNo });
+      message.success('添加成功');
+      setEditing(false);
+      setInputVal('');
+      onRefresh();
+    } catch (err: unknown) {
+      message.error(err instanceof Error ? err.message : '添加失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    if (!slot.regId) return;
+    try {
+      await adminRemoveRegistration(date, slot.regId);
+      message.success('已移除');
+      onRefresh();
+    } catch (err: unknown) {
+      message.error(err instanceof Error ? err.message : '移除失败');
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+      <span style={{ color: 'var(--text-dim)', width: 20, fontSize: 12 }}>{slot.slotNo}</span>
+      {slot.filled ? (
+        <>
+          <span style={{ color: 'var(--text)', flex: 1 }}>{slot.name}</span>
+          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{slot.phone}</span>
+          <Popconfirm title={`确定移除 ${slot.name}？`} onConfirm={handleRemove} okText="移除" cancelText="取消" okButtonProps={{ danger: true }}>
+            <Button size="small" type="text" danger icon={<CloseOutlined />} style={{ fontSize: 11 }} />
+          </Popconfirm>
+        </>
+      ) : editing ? (
+        <>
+          <Input
+            size="small"
+            placeholder="输入游戏名"
+            value={inputVal}
+            onChange={(e) => setInputVal(e.target.value)}
+            onPressEnter={handleSubmit}
+            style={{ flex: 1 }}
+            autoFocus
+          />
+          <Button size="small" type="primary" loading={submitting} onClick={handleSubmit}>确定</Button>
+          <Button size="small" onClick={() => { setEditing(false); setInputVal(''); }}>取消</Button>
+        </>
+      ) : (
+        <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={() => setEditing(true)} style={{ color: 'var(--text-dim)' }}>
+          添加
+        </Button>
+      )}
+    </div>
+  );
+}

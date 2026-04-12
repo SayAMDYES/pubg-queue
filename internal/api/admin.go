@@ -366,6 +366,7 @@ func (a *AdminAPI) EventDetail(w http.ResponseWriter, r *http.Request) {
 		Name   string `json:"name"`
 		Phone  string `json:"phone"`
 		Filled bool   `json:"filled"`
+		RegID  int64  `json:"regId"`
 	}
 	capacity := ev.TeamCount * 4
 	slots := make([]SlotInfoAdmin, capacity)
@@ -389,6 +390,7 @@ func (a *AdminAPI) EventDetail(w http.ResponseWriter, r *http.Request) {
 					slots[idx].Name = reg.Name
 					slots[idx].Phone = reg.Phone
 					slots[idx].Filled = true
+					slots[idx].RegID = reg.ID
 				}
 			}
 		} else if reg.Status == "waitlist" {
@@ -432,6 +434,134 @@ func (a *AdminAPI) EventDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	Success(w, result)
+}
+
+// ManualRegister 管理员手动添加报名到指定空位
+func (a *AdminAPI) ManualRegister(w http.ResponseWriter, r *http.Request) {
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	var req struct {
+		Name   string `json:"name"`
+		TeamNo int    `json:"teamNo"`
+		SlotNo int    `json:"slotNo"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+
+	if !service.ValidateName(req.Name) {
+		Error(w, http.StatusBadRequest, "游戏名格式错误")
+		return
+	}
+	if req.TeamNo < 1 || req.SlotNo < 1 || req.SlotNo > 4 {
+		Error(w, http.StatusBadRequest, "队伍或位置参数无效")
+		return
+	}
+
+	ev, err := getEventByDate(a.db, date)
+	if err == sql.ErrNoRows {
+		Error(w, http.StatusNotFound, "活动不存在")
+		return
+	}
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+	if req.TeamNo > ev.TeamCount {
+		Error(w, http.StatusBadRequest, "队伍编号超出范围")
+		return
+	}
+
+	// 检查该位置是否已有人
+	var occupied int
+	if err := a.db.QueryRow(
+		`SELECT COUNT(*) FROM registrations WHERE event_id=? AND team_no=? AND slot_no=? AND status='assigned'`,
+		ev.ID, req.TeamNo, req.SlotNo,
+	).Scan(&occupied); err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+	if occupied > 0 {
+		Error(w, http.StatusConflict, "该位置已有人")
+		return
+	}
+
+	// 检查同名是否已报名
+	var nameCnt int
+	if err := a.db.QueryRow(
+		`SELECT COUNT(*) FROM registrations WHERE event_id=? AND name=? AND status != 'cancelled'`,
+		ev.ID, req.Name,
+	).Scan(&nameCnt); err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+	if nameCnt > 0 {
+		Error(w, http.StatusConflict, "该游戏名已报名")
+		return
+	}
+
+	_, err = a.db.Exec(
+		`INSERT INTO registrations (event_id, name, phone, status, team_no, slot_no) VALUES (?,?,'','assigned',?,?)`,
+		ev.ID, req.Name, req.TeamNo, req.SlotNo,
+	)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "添加失败")
+		return
+	}
+	Success(w, nil)
+}
+
+// RemoveRegistration 管理员移除单个报名
+func (a *AdminAPI) RemoveRegistration(w http.ResponseWriter, r *http.Request) {
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+
+	var req struct {
+		RegID int64 `json:"regId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+	if req.RegID <= 0 {
+		Error(w, http.StatusBadRequest, "无效的报名 ID")
+		return
+	}
+
+	// 验证报名属于该活动
+	var eventID int64
+	if err := a.db.QueryRow(`SELECT event_id FROM registrations WHERE id=?`, req.RegID).Scan(&eventID); err != nil {
+		Error(w, http.StatusNotFound, "报名记录不存在")
+		return
+	}
+
+	var dateCheck string
+	if err := a.db.QueryRow(`SELECT event_date FROM events WHERE id=?`, eventID).Scan(&dateCheck); err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+	if dateCheck != date {
+		Error(w, http.StatusBadRequest, "报名记录不属于该活动")
+		return
+	}
+
+	_, err := a.db.Exec(
+		`UPDATE registrations SET status='cancelled', cancelled_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`,
+		req.RegID,
+	)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "移除失败")
+		return
+	}
+	Success(w, nil)
 }
 
 // ExportCSV 导出 CSV

@@ -174,7 +174,7 @@ export interface AdminEventDetailData {
   }[];
   teams: {
     teamNo: number;
-    slots: { teamNo: number; slotNo: number; name: string; phone: string; filled: boolean }[];
+    slots: { teamNo: number; slotNo: number; name: string; phone: string; filled: boolean; regId: number }[];
   }[];
   waitlist: { name: string; phone: string }[];
   pubgEnabled: boolean;
@@ -210,6 +210,12 @@ export const adminStartEvent = (date: string) =>
 
 export const adminEndEvent = (date: string) =>
   request.post<unknown, ApiResponse<{ actualEnd: string }>>(`/admin/events/${date}/end`);
+
+export const adminManualRegister = (date: string, data: { name: string; teamNo: number; slotNo: number }) =>
+  request.post<unknown, ApiResponse<null>>(`/admin/events/${date}/manual-register`, data);
+
+export const adminRemoveRegistration = (date: string, regId: number) =>
+  request.post<unknown, ApiResponse<null>>(`/admin/events/${date}/remove-registration`, { regId });
 
 // ─── 管理 - 用户 ──────────────────────────────────────────
 
