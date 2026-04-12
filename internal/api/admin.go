@@ -506,11 +506,12 @@ func (a *AdminAPI) ManualRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = a.db.Exec(
-		`INSERT INTO registrations (event_id, name, phone, status, team_no, slot_no) VALUES (?,?,'','assigned',?,?)`,
+		`INSERT INTO registrations (event_id, name, phone, status, team_no, slot_no) VALUES (?,?,'admin','assigned',?,?)`,
 		ev.ID, req.Name, req.TeamNo, req.SlotNo,
 	)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, "添加失败")
+		log.Printf("[Admin] ManualRegister insert error: %v", err)
+		Error(w, http.StatusInternalServerError, "添加失败: "+err.Error())
 		return
 	}
 	Success(w, nil)
