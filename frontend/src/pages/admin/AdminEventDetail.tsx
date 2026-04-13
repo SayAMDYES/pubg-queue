@@ -5,6 +5,19 @@ import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, Del
 import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, adminStartEvent, adminEndEvent, adminManualRegister, adminRemoveRegistration, type AdminEventDetailData } from '../../api';
 import { formatDateTime } from '../../utils';
 
+/** 格式化时间范围，支持 HH:mm 和 YYYY-MM-DDTHH:mm 两种输入 */
+function formatTimeRange(start?: string, end?: string): string {
+  if (!start && !end) return '-';
+  const fmt = (s: string) => {
+    const d = new Date(s.includes('T') ? s : `1970-01-01T${s}`);
+    if (isNaN(d.getTime())) return s;
+    return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  const s = start ? fmt(start) : '-';
+  const e = end ? fmt(end) : '-';
+  return `${s} ~ ${e}`;
+}
+
 const rankLabelColors: Record<string, string> = {
   '战神': '#ff4d4f',
   '精锐': '#faad14',
@@ -201,8 +214,8 @@ export default function AdminEventDetail() {
               )}
             </Descriptions.Item>
             <Descriptions.Item label="队伍数">{ev.teamCount}</Descriptions.Item>
-            <Descriptions.Item label="预计时间">{ev.startTime || '-'} ~ {ev.endTime || '-'}</Descriptions.Item>
-            <Descriptions.Item label="实际时间">{ev.actualStart || '-'} ~ {ev.actualEnd || '-'}</Descriptions.Item>
+            <Descriptions.Item label="预计时间">{formatTimeRange(ev.startTime, ev.endTime)}</Descriptions.Item>
+            <Descriptions.Item label="实际时间">{formatTimeRange(ev.actualStart, ev.actualEnd)}</Descriptions.Item>
             {ev.note && <Descriptions.Item label="备注" span={2}>{ev.note}</Descriptions.Item>}
           </Descriptions>
         </div>
