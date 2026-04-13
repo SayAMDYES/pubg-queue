@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"time"
 	"regexp"
 )
 
@@ -83,12 +84,22 @@ func Register(db *sql.DB, eventID, userID int64, name, phone string, allowDup bo
 
 	var open int
 	var teamCount int
-	row := tx.QueryRow(`SELECT open, team_count FROM events WHERE id = ?`, eventID)
-	if err = row.Scan(&open, &teamCount); err != nil {
+	var endTime string
+	var ended int
+	row := tx.QueryRow(`SELECT open, team_count, COALESCE(end_time,''), COALESCE(ended,0) FROM events WHERE id = ?`, eventID)
+	if err = row.Scan(&open, &teamCount, &endTime, &ended); err != nil {
 		return 0, "", "", fmt.Errorf("fetch event: %w", err)
 	}
 	if open == 0 {
 		return 0, "", "", fmt.Errorf("event_closed")
+	}
+	if ended == 1 {
+		return 0, "", "", fmt.Errorf("event_ended")
+	}
+	if endTime != "" {
+		if t, parseErr := time.ParseInLocation("2006-01-02T15:04", endTime, time.Local); parseErr == nil && time.Now().After(t) {
+			return 0, "", "", fmt.Errorf("event_ended")
+		}
 	}
 
 	// 手机号唯一性检测（同一活动同一手机号只能报名一次）

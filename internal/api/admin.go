@@ -117,7 +117,7 @@ func (a *AdminAPI) Dashboard(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var ev EventRow
 		var openInt, endedInt int
-		if err := rows.Scan(&ev.ID, &ev.EventDate, &openInt,ev.EventDate, &openInt, &endedInt, &ev.TeamCount, &ev.Note,
+		if err := rows.Scan(&ev.ID, &ev.EventDate, &openInt, &endedInt, &ev.TeamCount, &ev.Note,
 			&ev.StartTime, &ev.EndTime, &ev.ActualStart, &ev.ActualEnd,
 			&ev.CreatedAt, &ev.UpdatedAt,
 			&ev.RegisteredCount, &ev.WaitlistCount); err != nil {

@@ -60,6 +60,7 @@ export default function EventDetailPage() {
         not_logged_in: '请先登录后再报名',
         invalid_name: '游戏名格式不正确（1-20字符）',
         event_closed: '报名已关闭',
+        event_ended: '活动已结束',
         phone_already_registered: '该手机号已报名',
         name_already_registered: '该游戏名已被使用',
       };
