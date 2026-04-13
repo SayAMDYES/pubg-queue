@@ -226,46 +226,62 @@ export default function AdminEventDetail() {
           <Button icon={<PlayCircleOutlined />} onClick={handleStart}>记录开始时间</Button>
           <Button icon={<StopOutlined />} onClick={handleEnd}>记录结束时间</Button>
           {pubgEnabled && <Button icon={<ReloadOutlined />} onClick={handleRefreshRankings}>重新计算战绩</Button>}
-          <Button icon={<ClearOutlined />} danger onClick={handleClear}>清空报名</Button>
+          {!ev.ended && <Button icon={<ClearOutlined />} danger onClick={handleClear}>清空报名</Button>}
           <Button icon={<DeleteOutlined />} danger type="primary" onClick={handleDelete}>删除活动</Button>
         </Space>
 
-        {/* Teams grid */}
-        <div className="section-label" style={{ marginBottom: 12 }}>队伍安排</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 20 }}>
-          {teams.map((team) => (
-            <div key={team.teamNo} className="g-card">
-              <div className="section-label" style={{ marginBottom: 10 }}>第 {team.teamNo} 队</div>
-              {team.slots.map((slot, idx) => (
-                <SlotRow
-                  key={idx}
-                  slot={slot}
-                  date={date!}
-                  onRefresh={load}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
-
-        {/* Waitlist */}
-        {waitlist.length > 0 && (
-          <div className="g-card" style={{ marginBottom: 16 }}>
-            <div className="section-label" style={{ marginBottom: 12 }}>候补名单</div>
-            <Table
-              dataSource={waitlist}
-              columns={[
-                { title: '序号', key: 'idx', width: 60, render: (_: unknown, __: unknown, idx: number) => idx + 1 },
-                { title: '游戏名', dataIndex: 'name', key: 'name' },
-                { title: '手机号', dataIndex: 'phone', key: 'phone' },
-              ]}
-              pagination={false}
-              size="small"
-              scroll={{ x: 360 }}
-              rowKey={(_, idx) => String(idx)}
-            />
+        {/* Teams & Rankings */}
+        <div className="g-card" style={{ marginBottom: 16 }}>
+          <div className="section-label" style={{ marginBottom: 12 }}>队伍与战绩</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 16 }}>
+            {teams.map((team) => (
+              <div key={team.teamNo} style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px' }}>
+                <div className="section-label" style={{ marginBottom: 10 }}>第 {team.teamNo} 队</div>
+                {team.slots.map((slot, idx) => (
+                  <SlotRow
+                    key={idx}
+                    slot={slot}
+                    date={date!}
+                    onRefresh={load}
+                  />
+                ))}
+              </div>
+            ))}
           </div>
-        )}
+
+          {waitlist.length > 0 && (
+            <>
+              <div className="section-label" style={{ margin: '12px 0 8px' }}>候补名单</div>
+              <Table
+                dataSource={waitlist}
+                columns={[
+                  { title: '序号', key: 'idx', width: 60, render: (_: unknown, __: unknown, idx: number) => idx + 1 },
+                  { title: '游戏名', dataIndex: 'name', key: 'name' },
+                  { title: '手机号', dataIndex: 'phone', key: 'phone' },
+                ]}
+                pagination={false}
+                size="small"
+                scroll={{ x: 360 }}
+                rowKey={(_, idx) => String(idx)}
+                style={{ marginBottom: 16 }}
+              />
+            </>
+          )}
+
+          {pubgEnabled && rankings && rankings.length > 0 && (
+            <>
+              <div className="section-label" style={{ margin: '12px 0 8px' }}>战绩排名</div>
+              <Table
+                dataSource={rankings}
+                columns={rankColumns}
+                pagination={false}
+                size="small"
+                scroll={{ x: 780 }}
+                rowKey="RankNo"
+              />
+            </>
+          )}
+        </div>
 
         {/* All registrations */}
         <div className="g-card" style={{ marginBottom: 16 }}>
@@ -279,21 +295,6 @@ export default function AdminEventDetail() {
             rowKey="id"
           />
         </div>
-
-        {/* Rankings */}
-        {pubgEnabled && rankings && rankings.length > 0 && (
-          <div className="g-card">
-            <div className="section-label" style={{ marginBottom: 12 }}>战绩排名</div>
-            <Table
-              dataSource={rankings}
-              columns={rankColumns}
-              pagination={false}
-              size="small"
-              scroll={{ x: 780 }}
-              rowKey="RankNo"
-            />
-          </div>
-        )}
       </div>
     </div>
   );

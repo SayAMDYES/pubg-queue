@@ -240,9 +240,17 @@ func (a *AdminAPI) ClearEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var eventID int64
-	if err := a.db.QueryRow(`SELECT id FROM events WHERE event_date=?`, date).Scan(&eventID); err != nil {
+	ev, err := getEventByDate(a.db, date)
+	if err == sql.ErrNoRows {
 		Error(w, http.StatusNotFound, "活动不存在")
+		return
+	}
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+	if ev.Ended {
+		Error(w, http.StatusBadRequest, "活动已结束，无法清空")
 		return
 	}
 
@@ -251,7 +259,7 @@ func (a *AdminAPI) ClearEvent(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "数据库错误")
 		return
 	}
-	if _, err = tx.Exec(`DELETE FROM event_rankings WHERE event_id=?`, eventID); err != nil {
+	if _, err = tx.Exec(`DELETE FROM event_rankings WHERE event_id=?`, ev.ID); err != nil {
 		tx.Rollback()
 		Error(w, http.StatusInternalServerError, "清空失败")
 		return
