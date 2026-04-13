@@ -16,7 +16,7 @@ export default function EventDetailPage() {
   const [leaveResult, setLeaveResult] = useState<LeaveResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [regForm] = Form.useForm();
-  const [leaveForm] = Form.useForm();
+
   const [statsModal, setStatsModal] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsData, setStatsData] = useState<PlayerStatsOverview | null>(null);
@@ -80,22 +80,6 @@ export default function EventDetailPage() {
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : '离队失败';
       message.error(errMsg === 'registration_not_found' ? '未找到您的报名记录' : errMsg);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleLeaveWithPassword = async (values: { phone: string; password: string }) => {
-    if (!date) return;
-    setSubmitting(true);
-    try {
-      const res = await leaveEvent(date, values);
-      setLeaveResult(res.data);
-      message.success('离队成功！');
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : '离队失败';
-      const errorMap: Record<string, string> = { wrong_password: '密码错误', registration_not_found: '未找到您的报名记录' };
-      message.error(errorMap[errMsg] || errMsg);
     } finally {
       setSubmitting(false);
     }
@@ -469,48 +453,27 @@ export default function EventDetailPage() {
           </div>
         )}
 
-        {/* Leave — only show for waitlist users or non-logged-in; assigned users have inline leave button */}
-        {!isPastDeadline && (userRegistered ? userStatus === 'waitlist' : true) && (
+        {/* Leave — only show for logged-in waitlist users; assigned users have inline leave button */}
+        {!isPastDeadline && userLoggedIn && userRegistered && userStatus === 'waitlist' && (
           <div className="g-card">
             <div className="g-card__header">
               <LogoutOutlined />
               退出报名
             </div>
-            {userLoggedIn ? (
-              <>
-                <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
-                  {userStatus === 'waitlist' ? '您当前在候补列表，点击确认可退出。' : '已登录，点击确认即可离队，系统会自动递补候补。'}
-                </p>
-                <Popconfirm
-                  title="确认离队？"
-                  description="离队后将失去当前位置，候补玩家会自动递补。"
-                  onConfirm={handleLeaveWithSession}
-                  okText="确认离队"
-                  cancelText="取消"
-                >
-                  <Button danger loading={submitting} block>
-                    确认离队
-                  </Button>
-                </Popconfirm>
-              </>
-            ) : (
-              <>
-                <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
-                  输入报名时使用的手机号和密码即可离队。
-                </p>
-                <Form form={leaveForm} onFinish={handleLeaveWithPassword} layout="vertical">
-                  <Form.Item name="phone" label="手机号" rules={[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号' }]}>
-                    <Input placeholder="手机号" maxLength={11} />
-                  </Form.Item>
-                  <Form.Item name="password" label="密码" rules={[{ required: true, min: 6, message: '密码至少6位' }]} style={{ marginBottom: 12 }}>
-                    <Input.Password placeholder="密码" />
-                  </Form.Item>
-                  <Form.Item style={{ marginBottom: 0 }}>
-                    <Button danger htmlType="submit" loading={submitting} block>确认离队</Button>
-                  </Form.Item>
-                </Form>
-              </>
-            )}
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+              您当前在候补列表，点击确认可退出。
+            </p>
+            <Popconfirm
+              title="确认离队？"
+              description="离队后将失去当前位置，候补玩家会自动递补。"
+              onConfirm={handleLeaveWithSession}
+              okText="确认离队"
+              cancelText="取消"
+            >
+              <Button danger loading={submitting} block>
+                确认离队
+              </Button>
+            </Popconfirm>
           </div>
         )}
 
