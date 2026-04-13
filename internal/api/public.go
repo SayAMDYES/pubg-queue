@@ -65,7 +65,7 @@ func CalendarHandler(db *sql.DB) http.HandlerFunc {
 		endDate := lastDay.Format("2006-01-02")
 
 		rows, err := db.Query(
-			`SELECT event_date, open, team_count, COALESCE(start_time,''),
+			`SELECT event_date, open, team_count, COALESCE(start_time,''), COALESCE(end_time,''), COALESCE(ended,0),
 				(SELECT COUNT(*) FROM registrations WHERE event_id=events.id AND status='assigned') as reg_count
 			FROM events WHERE event_date >= ? AND event_date <= ? ORDER BY event_date`,
 			startDate, endDate,
@@ -82,14 +82,24 @@ func CalendarHandler(db *sql.DB) http.HandlerFunc {
 			var open int
 			var teamCount int
 			var startTime string
+			var endTime string
+			var ended int
 			var regCount int
-			if err := rows.Scan(&dateStr, &open, &teamCount, &startTime, &regCount); err != nil {
+			if err := rows.Scan(&dateStr, &open, &teamCount, &startTime, &endTime, &ended, &regCount); err != nil {
 				continue
+			}
+			isOpen := open == 1
+			isEnded := ended == 1
+			if !isEnded && endTime != "" {
+				if t, parseErr := time.ParseInLocation("2006-01-02T15:04", endTime, time.Local); parseErr == nil && time.Now().After(t) {
+					isEnded = true
+					isOpen = false
+				}
 			}
 			capacity := teamCount * 4
 			eventMap[dateStr] = CalendarDay{
 				HasEvent:   true,
-				Open:       open == 1,
+				Open:       isOpen,
 				Full:       regCount >= capacity,
 				Registered: regCount,
 				Capacity:   capacity,

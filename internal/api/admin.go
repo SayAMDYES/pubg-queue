@@ -123,8 +123,14 @@ func (a *AdminAPI) Dashboard(w http.ResponseWriter, r *http.Request) {
 			&ev.RegisteredCount, &ev.WaitlistCount); err != nil {
 			continue
 		}
-		ev.Open = openInt == 1
-	ev.Ended = endedInt == 1
+t	ev.Open = openInt == 1
+		ev.Ended = endedInt == 1
+		if !ev.Ended && ev.EndTime != "" {
+			if t, err := time.ParseInLocation("2006-01-02T15:04", ev.EndTime, time.Local); err == nil && time.Now().After(t) {
+				ev.Ended = true
+				ev.Open = false
+			}
+		}
 		events = append(events, ev)
 	}
 

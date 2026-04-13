@@ -27,6 +27,13 @@ func getEventByDate(db *sql.DB, date string) (model.Event, error) {
 	}
 	ev.Open = openInt == 1
 	ev.Ended = endedInt == 1
+	// 根据预设结束时间自动判定已结束状态
+	if !ev.Ended && ev.EndTime != "" {
+		if t, err := time.ParseInLocation("2006-01-02T15:04", ev.EndTime, time.Local); err == nil && time.Now().After(t) {
+			ev.Ended = true
+			ev.Open = false
+		}
+	}
 	return ev, nil
 }
 
