@@ -266,7 +266,7 @@ func (a *AdminAPI) ClearEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err = tx.Exec(
 		`UPDATE registrations SET status='cancelled', cancelled_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE event_id=? AND status != 'cancelled'`,
-		eventID,
+		ev.ID,
 	)
 	if err != nil {
 		tx.Rollback()
