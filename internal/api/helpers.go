@@ -27,14 +27,30 @@ func getEventByDate(db *sql.DB, date string) (model.Event, error) {
 	}
 	ev.Open = openInt == 1
 	ev.Ended = endedInt == 1
-	// 根据预设结束时间自动判定已结束状态
-	if !ev.Ended && ev.EndTime != "" {
-		if t, err := time.ParseInLocation("2006-01-02T15:04", ev.EndTime, time.Local); err == nil && time.Now().After(t) {
-			ev.Ended = true
-			ev.Open = false
+	ev.Ended, ev.Open = autoEndCheck(ev.EventDate, ev.StartTime, ev.EndTime, ev.Ended)
+	return ev, nil
+}
+
+// autoEndCheck 根据 end_time、start_time 和活动日期自动判定已结束状态
+func autoEndCheck(eventDate, startTime, endTime string, ended bool) (bool, bool) {
+	if ended {
+		return true, false
+	}
+	if endTime != "" {
+		if t, err := time.ParseInLocation("2006-01-02T15:04", endTime, time.Local); err == nil && time.Now().After(t) {
+			return true, false
+		}
+	} else if startTime != "" {
+		if t, err := time.ParseInLocation("2006-01-02T15:04", eventDate+"T"+startTime, time.Local); err == nil && time.Now().After(t.Add(4*time.Hour)) {
+			return true, false
+		}
+	} else {
+		today := time.Now().Format("2006-01-02")
+		if eventDate < today {
+			return true, false
 		}
 	}
-	return ev, nil
+	return false, true
 }
 
 func getClientIP(r *http.Request) string {

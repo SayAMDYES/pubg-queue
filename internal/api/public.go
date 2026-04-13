@@ -90,12 +90,7 @@ func CalendarHandler(db *sql.DB) http.HandlerFunc {
 			}
 			isOpen := open == 1
 			isEnded := ended == 1
-			if !isEnded && endTime != "" {
-				if t, parseErr := time.ParseInLocation("2006-01-02T15:04", endTime, time.Local); parseErr == nil && time.Now().After(t) {
-					isEnded = true
-					isOpen = false
-				}
-			}
+			isEnded, isOpen = autoEndCheck(dateStr, startTime, endTime, isEnded)
 			capacity := teamCount * 4
 			eventMap[dateStr] = CalendarDay{
 				HasEvent:   true,
