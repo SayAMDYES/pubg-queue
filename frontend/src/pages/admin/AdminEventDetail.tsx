@@ -139,6 +139,18 @@ export default function AdminEventDetail() {
     { title: '报名时间', dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => formatDateTime(v) },
   ];
 
+  // 找出击杀、死亡、场均伤害最高值
+  let maxKills = 0, maxDeaths = 0, maxAvgDamage = 0;
+  if (rankings && rankings.length > 0) {
+    for (const r of rankings) {
+      if (r.Kills > maxKills) maxKills = r.Kills;
+      if (r.Deaths > maxDeaths) maxDeaths = r.Deaths;
+      if (r.AvgDamage > maxAvgDamage) maxAvgDamage = r.AvgDamage;
+    }
+  }
+  const highlightIf = (val: number, max: number) =>
+    val === max && val > 0 ? { fontWeight: 700, color: '#f0a500' } : {};
+
   const rankColumns = [
     { title: '排名', dataIndex: 'RankNo', key: 'rankNo', width: 60 },
     {
@@ -149,11 +161,20 @@ export default function AdminEventDetail() {
     },
     { title: '游戏名', dataIndex: 'GameName', key: 'gameName' },
     { title: '场次', dataIndex: 'Matches', key: 'matches' },
-    { title: '击杀', dataIndex: 'Kills', key: 'kills' },
-    { title: '死亡', dataIndex: 'Deaths', key: 'deaths' },
+    {
+      title: '击杀', dataIndex: 'Kills', key: 'kills',
+      render: (v: number) => <span style={highlightIf(v, maxKills)}>{v === maxKills && v > 0 ? '🏆 ' : ''}{v}</span>,
+    },
+    {
+      title: '死亡', dataIndex: 'Deaths', key: 'deaths',
+      render: (v: number) => <span style={highlightIf(v, maxDeaths)}>{v === maxDeaths && v > 0 ? '💀 ' : ''}{v}</span>,
+    },
     { title: '助攻', dataIndex: 'Assists', key: 'assists' },
     { title: 'KDA', dataIndex: 'KDA', key: 'kda', render: (v: number) => v?.toFixed(2) || '-' },
-    { title: '场均伤害', dataIndex: 'AvgDamage', key: 'avgDamage', render: (v: number) => v?.toFixed(0) || '-' },
+    {
+      title: '场均伤害', dataIndex: 'AvgDamage', key: 'avgDamage',
+      render: (v: number) => <span style={highlightIf(v, maxAvgDamage)}>{v === maxAvgDamage && v > 0 ? '🔥 ' : ''}{v?.toFixed(0) || '-'}</span>,
+    },
     { title: '评分', dataIndex: 'Score', key: 'score', render: (v: number) => v?.toFixed(1) || '-' },
   ];
 
