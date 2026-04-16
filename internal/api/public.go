@@ -160,19 +160,20 @@ type WaitlistEntry struct {
 
 // EventDetailResponse 活动详情响应
 type EventDetailResponse struct {
-	Event           EventInfo       `json:"event"`
-	Teams           []TeamInfo      `json:"teams"`
-	Waitlist        []WaitlistEntry `json:"waitlist"`
-	UserPhone       string          `json:"userPhone"`
-	UserLoggedIn    bool            `json:"userLoggedIn"`
-	GameNames       []string        `json:"gameNames"`
-	PUBGEnabled     bool            `json:"pubgEnabled"`
-	RegisteredCount int             `json:"registeredCount"`
-	Capacity        int             `json:"capacity"`
-	UserRegistered  bool            `json:"userRegistered"`
-	UserStatus      string          `json:"userStatus"`
-	UserTeamNo      int             `json:"userTeamNo"`
-	UserSlotNo      int             `json:"userSlotNo"`
+	Event           EventInfo          `json:"event"`
+	Teams           []TeamInfo         `json:"teams"`
+	Waitlist        []WaitlistEntry    `json:"waitlist"`
+	Rankings        []service.RankEntry `json:"rankings,omitempty"`
+	UserPhone       string             `json:"userPhone"`
+	UserLoggedIn    bool               `json:"userLoggedIn"`
+	GameNames       []string           `json:"gameNames"`
+	PUBGEnabled     bool               `json:"pubgEnabled"`
+	RegisteredCount int                `json:"registeredCount"`
+	Capacity        int                `json:"capacity"`
+	UserRegistered  bool               `json:"userRegistered"`
+	UserStatus      string             `json:"userStatus"`
+	UserTeamNo      int                `json:"userTeamNo"`
+	UserSlotNo      int                `json:"userSlotNo"`
 }
 
 // EventInfo 活动基本信息
@@ -304,8 +305,14 @@ func EventDetailHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
 		if waitlist == nil {
 			waitlist = []WaitlistEntry{}
 		}
-		if gameNames == nil {
+	if gameNames == nil {
 			gameNames = []string{}
+		}
+
+		// 已结束活动且 PUBG 已启用时返回战绩排名
+		var rankings []service.RankEntry
+		if ev.Ended && pubgEnabled {
+			rankings, _ = service.GetEventRankings(db, ev.ID)
 		}
 
 		resp := EventDetailResponse{
@@ -323,6 +330,7 @@ func EventDetailHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
 			},
 			Teams:           teams,
 			Waitlist:        waitlist,
+			Rankings:        rankings,
 			UserPhone:       userPhone,
 			UserLoggedIn:    userID > 0,
 			GameNames:       gameNames,

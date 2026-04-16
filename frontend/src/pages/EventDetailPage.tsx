@@ -222,7 +222,7 @@ export default function EventDetailPage() {
     );
   }
 
-  const { event: ev, teams, waitlist, gameNames, pubgEnabled, userLoggedIn, userPhone, userRegistered, userStatus, userTeamNo, userSlotNo } = data;
+  const { event: ev, teams, waitlist, rankings, gameNames, pubgEnabled, userLoggedIn, userPhone, userRegistered, userStatus, userTeamNo, userSlotNo } = data;
 
   const statusColor = ev.ended ? 'var(--text-dim)' : !ev.open ? 'var(--text-muted)' : data.registeredCount >= data.capacity ? 'var(--danger)' : 'var(--success)';
   const statusLabel = ev.ended ? '已结束' : !ev.open ? '已关闭' : data.registeredCount >= data.capacity ? '已满员' : '报名开放';
@@ -402,6 +402,38 @@ export default function EventDetailPage() {
                 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{w.phone}</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Rankings — 已结束且有战绩数据时显示 */}
+        {ev.ended && rankings && rankings.length > 0 && (
+          <div className="g-card" style={{ marginBottom: 16 }}>
+            <div className="g-card__header">
+              <TrophyOutlined />
+              战绩排名
+            </div>
+            <Table
+              dataSource={rankings}
+              columns={[
+                { title: '#', dataIndex: 'RankNo', key: 'rankNo', width: 36, align: 'center' },
+                { title: '称号', dataIndex: 'RankLabel', key: 'rankLabel', width: 100, render: (label: string) => {
+                  const colorMap: Record<string, string> = { '战神': '#ff4d4f', '精锐': '#faad14', '骨干': '#1677ff', '菜鸟': '#52c41a', '战犯': '#666', '缺席': '#999' };
+                  const key = Object.keys(colorMap).find(k => label.includes(k)) || label;
+                  return <Tag color={colorMap[key] || '#999'}>{label}</Tag>;
+                }},
+                { title: '游戏名', dataIndex: 'GameName', key: 'gameName' },
+                { title: '场次', dataIndex: 'Matches', key: 'matches', width: 50, align: 'center' },
+                { title: '击杀', dataIndex: 'Kills', key: 'kills', width: 50, align: 'center' },
+                { title: '死亡', dataIndex: 'Deaths', key: 'deaths', width: 50, align: 'center' },
+                { title: '助攻', dataIndex: 'Assists', key: 'assists', width: 50, align: 'center' },
+                { title: 'K/D', dataIndex: 'KDA', key: 'kda', width: 60, align: 'center', render: (v: number) => v?.toFixed(2) || '-' },
+                { title: '场均伤害', dataIndex: 'AvgDamage', key: 'avgDmg', width: 80, align: 'center', render: (v: number) => v?.toFixed(0) || '-' },
+              ]}
+              pagination={false}
+              size="small"
+              scroll={{ x: 640 }}
+              rowKey="RankNo"
+            />
           </div>
         )}
 

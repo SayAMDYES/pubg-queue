@@ -70,6 +70,7 @@ export interface EventDetailData {
   event: EventInfo;
   teams: TeamInfo[];
   waitlist: WaitlistEntry[];
+  rankings?: RankEntry[];
   userPhone: string;
   userLoggedIn: boolean;
   gameNames: string[];
