@@ -406,36 +406,58 @@ export default function EventDetailPage() {
         )}
 
         {/* Rankings — 已结束且有战绩数据时显示 */}
-        {ev.ended && rankings && rankings.length > 0 && (
-          <div className="g-card" style={{ marginBottom: 16 }}>
-            <div className="g-card__header">
-              <TrophyOutlined />
-              战绩排名
+        {ev.ended && rankings && rankings.length > 0 && (() => {
+          const rankLabelColors: Record<string, string> = { '战神': '#ff4d4f', '精锐': '#faad14', '骨干': '#1677ff', '菜鸟': '#52c41a', '战犯': '#666', '缺席': '#999' };
+          const rankTagClass: Record<string, string> = { '战神': 'rank-tag--fire', '战犯': 'rank-tag--skull', '菜鸟': 'rank-tag--egg' };
+          const getRankKey = (label: string) => Object.keys(rankLabelColors).find(k => label.includes(k)) || label;
+
+          let maxKills = 0, maxDeaths = 0, maxAvgDamage = 0;
+          for (const r of rankings) {
+            if (r.Kills > maxKills) maxKills = r.Kills;
+            if (r.Deaths > maxDeaths) maxDeaths = r.Deaths;
+            if (r.AvgDamage > maxAvgDamage) maxAvgDamage = r.AvgDamage;
+          }
+          const hl = (val: number, max: number) => val === max && val > 0 ? { fontWeight: 700, color: '#f0a500' } : {};
+
+          return (
+            <div className="g-card" style={{ marginBottom: 16 }}>
+              <style>{`
+                @keyframes fireGlow { 0%,100%{box-shadow:0 0 4px #ff660088,0 0 8px #ff330044} 50%{box-shadow:0 0 8px #ff9900cc,0 0 16px #ff660088,0 0 24px #ff330044} }
+                @keyframes skullPulse { 0%,100%{opacity:.65} 50%{opacity:1} }
+                @keyframes eggBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-2px)} }
+                .rank-tag--fire{animation:fireGlow 1.5s ease-in-out infinite}
+                .rank-tag--skull{animation:skullPulse 2s ease-in-out infinite}
+                .rank-tag--egg{animation:eggBob 1.8s ease-in-out infinite}
+              `}</style>
+              <div className="g-card__header">
+                <TrophyOutlined />
+                战绩排名
+              </div>
+              <Table
+                dataSource={rankings}
+                columns={[
+                  { title: '排名', dataIndex: 'RankNo', key: 'rankNo', width: 60 },
+                  { title: '称号', dataIndex: 'RankLabel', key: 'rankLabel', render: (label: string) => {
+                    const key = getRankKey(label);
+                    return <Tag color={rankLabelColors[key] || '#999'} className={rankTagClass[key]}>{label}</Tag>;
+                  }},
+                  { title: '游戏名', dataIndex: 'GameName', key: 'gameName' },
+                  { title: '场次', dataIndex: 'Matches', key: 'matches' },
+                  { title: '击杀', dataIndex: 'Kills', key: 'kills', render: (v: number) => <span style={hl(v, maxKills)}>{v === maxKills && v > 0 ? '🏆 ' : ''}{v}</span> },
+                  { title: '死亡', dataIndex: 'Deaths', key: 'deaths', render: (v: number) => <span style={hl(v, maxDeaths)}>{v === maxDeaths && v > 0 ? '💀 ' : ''}{v}</span> },
+                  { title: '助攻', dataIndex: 'Assists', key: 'assists' },
+                  { title: 'K/D', dataIndex: 'KDA', key: 'kda', render: (v: number) => v?.toFixed(2) || '-' },
+                  { title: '场均伤害', dataIndex: 'AvgDamage', key: 'avgDamage', render: (v: number) => <span style={hl(v, maxAvgDamage)}>{v === maxAvgDamage && v > 0 ? '🔥 ' : ''}{v?.toFixed(0) || '-'}</span> },
+                  { title: '评分', dataIndex: 'Score', key: 'score', render: (v: number) => v?.toFixed(1) || '-' },
+                ]}
+                pagination={false}
+                size="small"
+                scroll={{ x: 780 }}
+                rowKey="RankNo"
+              />
             </div>
-            <Table
-              dataSource={rankings}
-              columns={[
-                { title: '#', dataIndex: 'RankNo', key: 'rankNo', width: 36, align: 'center' },
-                { title: '称号', dataIndex: 'RankLabel', key: 'rankLabel', width: 100, render: (label: string) => {
-                  const colorMap: Record<string, string> = { '战神': '#ff4d4f', '精锐': '#faad14', '骨干': '#1677ff', '菜鸟': '#52c41a', '战犯': '#666', '缺席': '#999' };
-                  const key = Object.keys(colorMap).find(k => label.includes(k)) || label;
-                  return <Tag color={colorMap[key] || '#999'}>{label}</Tag>;
-                }},
-                { title: '游戏名', dataIndex: 'GameName', key: 'gameName' },
-                { title: '场次', dataIndex: 'Matches', key: 'matches', width: 50, align: 'center' },
-                { title: '击杀', dataIndex: 'Kills', key: 'kills', width: 50, align: 'center' },
-                { title: '死亡', dataIndex: 'Deaths', key: 'deaths', width: 50, align: 'center' },
-                { title: '助攻', dataIndex: 'Assists', key: 'assists', width: 50, align: 'center' },
-                { title: 'K/D', dataIndex: 'KDA', key: 'kda', width: 60, align: 'center', render: (v: number) => v?.toFixed(2) || '-' },
-                { title: '场均伤害', dataIndex: 'AvgDamage', key: 'avgDmg', width: 80, align: 'center', render: (v: number) => v?.toFixed(0) || '-' },
-              ]}
-              pagination={false}
-              size="small"
-              scroll={{ x: 640 }}
-              rowKey="RankNo"
-            />
-          </div>
-        )}
+          );
+        })()}
 
         {/* Register */}
         {ev.open && !userRegistered && !isPastDeadline && (
