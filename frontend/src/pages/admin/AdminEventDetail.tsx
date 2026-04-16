@@ -19,12 +19,12 @@ function formatTimeRange(start?: string, end?: string): string {
 }
 
 const rankLabelColors: Record<string, string> = {
-  '战神': '#ff4d4f',
-  '精锐': '#faad14',
-  '骨干': '#1677ff',
-  '菜鸟': '#52c41a',
-  '战犯': '#666',
-  '缺席': '#999',
+  '🔥 战神': '#ff4d4f',
+  '⚔️ 精锐': '#faad14',
+  '🛡️ 骨干': '#1677ff',
+  '🐣 菜鸟': '#52c41a',
+  '💀 战犯': '#666',
+  '👻 缺席': '#999',
 };
 
 const statusLabel: Record<string, string> = {
@@ -36,6 +36,30 @@ const statusColor: Record<string, string> = {
   assigned: 'green',
   waitlist: 'orange',
   cancelled: 'red',
+};
+
+const rankAnimations = `
+@keyframes fireGlow {
+  0%, 100% { text-shadow: 0 0 4px #ff6600, 0 0 8px #ff3300; filter: brightness(1); }
+  50% { text-shadow: 0 0 8px #ff9900, 0 0 16px #ff6600, 0 0 24px #ff3300; filter: brightness(1.2); }
+}
+@keyframes skullPulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+@keyframes shieldShine {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.15); }
+}
+.rank-tag--fire { animation: fireGlow 1.5s ease-in-out infinite; }
+.rank-tag--skull { animation: skullPulse 2s ease-in-out infinite; }
+.rank-tag--shield { animation: shieldShine 2.5s ease-in-out infinite; }
+`;
+
+const rankTagClass: Record<string, string> = {
+  '🔥 战神': 'rank-tag--fire',
+  '💀 战犯': 'rank-tag--skull',
+  '🛡️ 骨干': 'rank-tag--shield',
 };
 
 export default function AdminEventDetail() {
@@ -170,7 +194,11 @@ export default function AdminEventDetail() {
       title: '称号',
       dataIndex: 'RankLabel',
       key: 'rankLabel',
-      render: (label: string) => <Tag color={rankLabelColors[label] || '#999'}>{label}</Tag>,
+      render: (label: string) => (
+        <Tag color={rankLabelColors[label] || '#999'} className={rankTagClass[label]} style={{ display: 'inline-block' }}>
+          {label}
+        </Tag>
+      ),
     },
     { title: '游戏名', dataIndex: 'GameName', key: 'gameName' },
     { title: '场次', dataIndex: 'Matches', key: 'matches' },
@@ -183,7 +211,7 @@ export default function AdminEventDetail() {
       render: (v: number) => <span style={highlightIf(v, maxDeaths)}>{v === maxDeaths && v > 0 ? '💀 ' : ''}{v}</span>,
     },
     { title: '助攻', dataIndex: 'Assists', key: 'assists' },
-    { title: 'KDA', dataIndex: 'KDA', key: 'kda', render: (v: number) => v?.toFixed(2) || '-' },
+    { title: 'K/D', dataIndex: 'KDA', key: 'kda', render: (v: number) => v?.toFixed(2) || '-' },
     {
       title: '场均伤害', dataIndex: 'AvgDamage', key: 'avgDamage',
       render: (v: number) => <span style={highlightIf(v, maxAvgDamage)}>{v === maxAvgDamage && v > 0 ? '🔥 ' : ''}{v?.toFixed(0) || '-'}</span>,
@@ -193,6 +221,7 @@ export default function AdminEventDetail() {
 
   return (
     <div className="page-wrap">
+      <style>{rankAnimations}</style>
       <div className="page-inner page-inner--wide">
         <div className="page-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>

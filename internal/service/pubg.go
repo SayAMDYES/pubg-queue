@@ -133,11 +133,11 @@ func (c *PUBGClient) GetPlayerSeasonStats(playerName string) (*PlayerStats, erro
 	}
 
 	avgDamage := 0.0
-	kda := 0.0
+	kd := 0.0
 	if totalMatches > 0 {
 		avgDamage = totalDamage / float64(totalMatches)
+		kd = float64(totalKills) / float64(totalMatches)
 	}
-	kda = float64(totalKills+totalAssists) / math.Max(float64(totalDeaths), 1)
 
 	return &PlayerStats{
 		GameName:    playerName,
@@ -147,7 +147,7 @@ func (c *PUBGClient) GetPlayerSeasonStats(playerName string) (*PlayerStats, erro
 		Assists:     totalAssists,
 		TotalDamage: totalDamage,
 		AvgDamage:   avgDamage,
-		KDA:         kda,
+		KDA:         kd,
 	}, nil
 }
 
@@ -311,7 +311,7 @@ func (c *PUBGClient) GetPlayerMatchesInTimeRange(playerName string, from, to tim
 		result.TotalDamage += ms.Damage
 	}
 	if result.MatchCount > 0 {
-		result.KDA = float64(result.Kills+result.Assists) / math.Max(float64(result.Deaths), 1)
+		result.KDA = float64(result.Kills) / float64(result.MatchCount)
 		result.AvgDamage = result.TotalDamage / float64(result.MatchCount)
 	}
 	return result, nil
@@ -343,7 +343,7 @@ func CachePlayerSeasonStats(db *sql.DB, client *PUBGClient, gameName string) {
 		`, gameName)
 		return
 	}
-	// Use KDA already computed in GetPlayerSeasonStats (kills+assists / max(deaths, 1))
+	// Use KD already computed in GetPlayerSeasonStats (kills / max(matches, 1))
 	db.Exec(`
 		INSERT INTO player_stats_cache (game_name, matches, kills, assists, total_damage, kda, found, refreshed_at)
 		VALUES (?, ?, ?, ?, ?, ?, 1, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -386,10 +386,10 @@ type RankEntry struct {
 	RankLabel   string
 }
 
-// CalcScore computes a composite score: KDA * 15 + avgDamage * 0.05.
-func CalcScore(kills, deaths, assists int, avgDamage float64) float64 {
-	kda := float64(kills+assists) / math.Max(float64(deaths), 1)
-	return kda*15 + avgDamage*0.05
+// CalcScore computes a composite score: KD * 15 + avgDamage * 0.05.
+func CalcScore(kills, matches int, avgDamage float64) float64 {
+	kd := float64(kills) / math.Max(float64(matches), 1)
+	return kd*15 + avgDamage*0.05
 }
 
 // assignRankLabels assigns tier labels based on rank position among N players.
@@ -399,20 +399,20 @@ func assignRankLabels(entries []RankEntry) {
 	n := len(entries)
 	for i := range entries {
 		if entries[i].Matches == 0 {
-			entries[i].RankLabel = "缺席"
+			entries[i].RankLabel = "👻 缺席"
 			continue
 		}
 		switch {
 		case i == 0 && n >= 2:
-			entries[i].RankLabel = "战神"
+			entries[i].RankLabel = "🔥 战神"
 		case i == 1 && n >= 4:
-			entries[i].RankLabel = "精锐"
+			entries[i].RankLabel = "⚔️ 精锐"
 		case i == n-2 && n >= 5:
-			entries[i].RankLabel = "菜鸟"
+			entries[i].RankLabel = "🐣 菜鸟"
 		case i == n-1 && n >= 2:
-			entries[i].RankLabel = "战犯"
+			entries[i].RankLabel = "💀 战犯"
 		default:
-			entries[i].RankLabel = "骨干"
+			entries[i].RankLabel = "🛡️ 骨干"
 		}
 	}
 }
@@ -456,63 +456,40 @@ func RefreshEventRankings(db *sql.DB, client *PUBGClient, eventID int64, actualS
 		return nil, nil
 	}
 
-	useTimeRange := actualStart != "" && actualEnd != ""
-	var from, to time.Time
-	if useTimeRange {
-		from, err = parseLocalDateTime(actualStart)
-		if err != nil {
-			useTimeRange = false
-		} else {
-			to, err = parseLocalDateTime(actualEnd)
-			if err != nil {
-				useTimeRange = false
-			}
-		}
+	if actualStart == "" || actualEnd == "" {
+		return nil, nil
+	}
+
+	from, err := parseLocalDateTime(actualStart)
+	if err != nil {
+		return nil, nil
+	}
+	to, err := parseLocalDateTime(actualEnd)
+	if err != nil {
+		return nil, nil
 	}
 
 	var entries []RankEntry
 	for _, r := range regs {
 		time.Sleep(pubgRateLimitDelay)
-		if useTimeRange {
-			rangeStats, err := client.GetPlayerMatchesInTimeRange(r.name, from, to)
-			if err != nil {
-				entries = append(entries, RankEntry{RegID: r.id, GameName: r.name})
-				continue
-			}
-			score := CalcScore(rangeStats.Kills, rangeStats.Deaths, rangeStats.Assists, rangeStats.AvgDamage)
-			entries = append(entries, RankEntry{
-				RegID:       r.id,
-				GameName:    r.name,
-				Matches:     rangeStats.MatchCount,
-				Kills:       rangeStats.Kills,
-				Deaths:      rangeStats.Deaths,
-				Assists:     rangeStats.Assists,
-				TotalDamage: rangeStats.TotalDamage,
-				AvgDamage:   rangeStats.AvgDamage,
-				KDA:         rangeStats.KDA,
-				Score:       score,
-			})
-		} else {
-			stats, err := client.GetPlayerSeasonStats(r.name)
-			if err != nil {
-				entries = append(entries, RankEntry{RegID: r.id, GameName: r.name})
-				continue
-			}
-			score := CalcScore(stats.Kills, stats.Deaths, stats.Assists, stats.AvgDamage)
-			kda := float64(stats.Kills+stats.Assists) / math.Max(float64(stats.Deaths), 1)
-			entries = append(entries, RankEntry{
-				RegID:       r.id,
-				GameName:    r.name,
-				Matches:     stats.Matches,
-				Kills:       stats.Kills,
-				Deaths:      stats.Deaths,
-				Assists:     stats.Assists,
-				TotalDamage: stats.TotalDamage,
-				AvgDamage:   stats.AvgDamage,
-				KDA:         kda,
-				Score:       score,
-			})
+	rangeStats, err := client.GetPlayerMatchesInTimeRange(r.name, from, to)
+		if err != nil {
+			entries = append(entries, RankEntry{RegID: r.id, GameName: r.name})
+			continue
 		}
+		score := CalcScore(rangeStats.Kills, rangeStats.MatchCount, rangeStats.AvgDamage)
+		entries = append(entries, RankEntry{
+			RegID:       r.id,
+			GameName:    r.name,
+			Matches:     rangeStats.MatchCount,
+			Kills:       rangeStats.Kills,
+			Deaths:      rangeStats.Deaths,
+			Assists:     rangeStats.Assists,
+			TotalDamage: rangeStats.TotalDamage,
+			AvgDamage:   rangeStats.AvgDamage,
+			KDA:         rangeStats.KDA,
+			Score:       score,
+		})
 	}
 
 	// Sort by score descending, then kills descending
@@ -646,11 +623,11 @@ func (c *PUBGClient) GetPlayerStatsOverview(playerName string, seasonID string) 
 	}
 
 	avgDamage := 0.0
-	kda := 0.0
+	kd := 0.0
 	if totalMatches > 0 {
 		avgDamage = totalDamage / float64(totalMatches)
+		kd = float64(totalKills) / float64(totalMatches)
 	}
-	kda = float64(totalKills+totalAssists) / math.Max(float64(totalDeaths), 1)
 
 	// Return up to 20 recent match IDs
 	limit := 20
@@ -668,7 +645,7 @@ func (c *PUBGClient) GetPlayerStatsOverview(playerName string, seasonID string) 
 		Assists:        totalAssists,
 		TotalDamage:    totalDamage,
 		AvgDamage:      avgDamage,
-		KDA:            kda,
+		KDA:            kd,
 		RecentMatchIDs: matchIDs[:limit],
 	}, nil
 }
@@ -931,7 +908,7 @@ func GetEventRankings(db *sql.DB, eventID int64) ([]RankEntry, error) {
 		if err := rows.Scan(&e.RegID, &e.GameName, &e.Matches, &e.Kills, &e.Deaths, &e.Assists, &e.TotalDamage, &e.Score, &e.RankNo, &e.RankLabel); err == nil {
 			if e.Matches > 0 {
 				e.AvgDamage = e.TotalDamage / float64(e.Matches)
-				e.KDA = float64(e.Kills+e.Assists) / math.Max(float64(e.Deaths), 1)
+				e.KDA = float64(e.Kills) / float64(e.Matches)
 			}
 			entries = append(entries, e)
 		}

@@ -404,7 +404,7 @@ export default function StatsPage() {
               </div>
               <Row gutter={[16, 16]}>
                 <Col xs={12} sm={6}><Statistic title="本赛季场次" value={stats.matches} /></Col>
-                <Col xs={12} sm={6}><Statistic title="KDA" value={stats.kda.toFixed(2)} /></Col>
+                <Col xs={12} sm={6}><Statistic title="K/D" value={stats.kda.toFixed(2)} /></Col>
                 <Col xs={12} sm={6}><Statistic title="总击杀" value={stats.kills} /></Col>
                 <Col xs={12} sm={6}><Statistic title="均伤" value={Math.round(stats.avgDamage)} /></Col>
                 <Col xs={12} sm={6}><Statistic title="总助攻" value={stats.assists} /></Col>

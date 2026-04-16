@@ -350,14 +350,14 @@ export default function EventDetailPage() {
                       <>
                         <span className="team-slot__phone">{slot.phone}</span>
                         {pubgEnabled && slot.stats?.found && (
-                          <Tooltip title={`场次: ${slot.stats.matches} | KDA: ${slot.stats.kda.toFixed(2)}`}>
+                          <Tooltip title={`场次: ${slot.stats.matches} | K/D: ${slot.stats.kda.toFixed(2)}`}>
                             <span
                               className="team-slot__tag team-slot__tag--gold"
                               style={{ cursor: 'pointer' }}
                               onClick={() => handleOpenStats(slot.name)}
                             >
                               <TrophyOutlined style={{ marginRight: 2 }} />
-                              {slot.stats.matches}场 {slot.stats.kda.toFixed(1)}KDA
+                              {slot.stats.matches}场 K/D {slot.stats.kda.toFixed(1)}
                             </span>
                           </Tooltip>
                         )}
@@ -510,7 +510,7 @@ export default function EventDetailPage() {
               </div>
               <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
                 <Col xs={12} sm={6}><Statistic title="场次" value={statsData.matches} /></Col>
-                <Col xs={12} sm={6}><Statistic title="KDA" value={statsData.kda.toFixed(2)} /></Col>
+                <Col xs={12} sm={6}><Statistic title="K/D" value={statsData.kda.toFixed(2)} /></Col>
                 <Col xs={12} sm={6}><Statistic title="总击杀" value={statsData.kills} /></Col>
                 <Col xs={12} sm={6}><Statistic title="均伤" value={Math.round(statsData.avgDamage)} /></Col>
                 <Col xs={12} sm={6}><Statistic title="总助攻" value={statsData.assists} /></Col>
