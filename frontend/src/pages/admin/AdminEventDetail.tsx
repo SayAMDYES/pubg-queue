@@ -19,13 +19,21 @@ function formatTimeRange(start?: string, end?: string): string {
 }
 
 const rankLabelColors: Record<string, string> = {
-  '🔥 战神': '#ff4d4f',
-  '⚔️ 精锐': '#faad14',
-  '🛡️ 骨干': '#1677ff',
-  '🐣 菜鸟': '#52c41a',
-  '💀 战犯': '#666',
-  '👻 缺席': '#999',
+  '战神': '#ff4d4f',
+  '精锐': '#faad14',
+  '骨干': '#1677ff',
+  '菜鸟': '#52c41a',
+  '战犯': '#666',
+  '缺席': '#999',
 };
+
+/** 从含 emoji 的标签中提取中文关键词，兼容新旧数据 */
+function getRankKey(label: string): string {
+  for (const key of Object.keys(rankLabelColors)) {
+    if (label.includes(key)) return key;
+  }
+  return label;
+}
 
 const statusLabel: Record<string, string> = {
   assigned: '已分配',
@@ -40,26 +48,26 @@ const statusColor: Record<string, string> = {
 
 const rankAnimations = `
 @keyframes fireGlow {
-  0%, 100% { text-shadow: 0 0 4px #ff6600, 0 0 8px #ff3300; filter: brightness(1); }
-  50% { text-shadow: 0 0 8px #ff9900, 0 0 16px #ff6600, 0 0 24px #ff3300; filter: brightness(1.2); }
+  0%, 100% { box-shadow: 0 0 4px #ff660088, 0 0 8px #ff330044; }
+  50% { box-shadow: 0 0 8px #ff9900cc, 0 0 16px #ff660088, 0 0 24px #ff330044; }
 }
 @keyframes skullPulse {
-  0%, 100% { opacity: 0.7; }
+  0%, 100% { opacity: 0.65; }
   50% { opacity: 1; }
 }
-@keyframes shieldShine {
-  0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.15); }
+@keyframes eggBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
 }
 .rank-tag--fire { animation: fireGlow 1.5s ease-in-out infinite; }
 .rank-tag--skull { animation: skullPulse 2s ease-in-out infinite; }
-.rank-tag--shield { animation: shieldShine 2.5s ease-in-out infinite; }
+.rank-tag--egg { animation: eggBob 1.8s ease-in-out infinite; }
 `;
 
 const rankTagClass: Record<string, string> = {
-  '🔥 战神': 'rank-tag--fire',
-  '💀 战犯': 'rank-tag--skull',
-  '🛡️ 骨干': 'rank-tag--shield',
+  '战神': 'rank-tag--fire',
+  '战犯': 'rank-tag--skull',
+  '菜鸟': 'rank-tag--egg',
 };
 
 export default function AdminEventDetail() {
@@ -194,11 +202,14 @@ export default function AdminEventDetail() {
       title: '称号',
       dataIndex: 'RankLabel',
       key: 'rankLabel',
-      render: (label: string) => (
-        <Tag color={rankLabelColors[label] || '#999'} className={rankTagClass[label]} style={{ display: 'inline-block' }}>
-          {label}
-        </Tag>
-      ),
+      render: (label: string) => {
+        const key = getRankKey(label);
+        return (
+          <Tag color={rankLabelColors[key] || '#999'} className={rankTagClass[key]}>
+            {label}
+          </Tag>
+        );
+      },
     },
     { title: '游戏名', dataIndex: 'GameName', key: 'gameName' },
     { title: '场次', dataIndex: 'Matches', key: 'matches' },
