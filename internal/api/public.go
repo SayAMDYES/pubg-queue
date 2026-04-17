@@ -20,6 +20,7 @@ type CalendarDay struct {
 	Date       string `json:"date"`
 	HasEvent   bool   `json:"hasEvent"`
 	Open       bool   `json:"open"`
+		Ended      bool   `json:"ended"`
 	Full       bool   `json:"full"`
 	Past       bool   `json:"past"`
 	IsToday    bool   `json:"isToday"`
@@ -95,6 +96,7 @@ func CalendarHandler(db *sql.DB) http.HandlerFunc {
 			eventMap[dateStr] = CalendarDay{
 				HasEvent:   true,
 				Open:       isOpen,
+				Ended:      isEnded,
 				Full:       regCount >= capacity,
 				Registered: regCount,
 				Capacity:   capacity,
@@ -115,6 +117,7 @@ func CalendarHandler(db *sql.DB) http.HandlerFunc {
 			if ev, ok := eventMap[dateStr]; ok {
 				cd.HasEvent = ev.HasEvent
 				cd.Open = ev.Open
+				cd.Ended = ev.Ended
 				cd.Full = ev.Full
 				cd.Registered = ev.Registered
 				cd.Capacity = ev.Capacity
