@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Table, Tag, Button, Space, message, Modal, Spin, Descriptions, Input, Popconfirm } from 'antd';
-import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, DeleteOutlined, PlayCircleOutlined, StopOutlined, PlusOutlined, CloseOutlined } from '@ant-design/icons';
-import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, adminStartEvent, adminEndEvent, adminManualRegister, adminRemoveRegistration, type AdminEventDetailData } from '../../api';
+import { Table, Tag, Button, Space, message, Modal, Spin, Descriptions, Input, Popconfirm, Progress } from 'antd';
+import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, DeleteOutlined, PlayCircleOutlined, StopOutlined, PlusOutlined, CloseOutlined, LoadingOutlined } from '@ant-design/icons';
+import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, adminGetRankingStatus, adminStartEvent, adminEndEvent, adminManualRegister, adminRemoveRegistration, type AdminEventDetailData, type RankingStatusData } from '../../api';
 import { formatDateTime } from '../../utils';
 
 /** 格式化时间范围，支持 HH:mm 和 YYYY-MM-DDTHH:mm 两种输入 */
@@ -75,6 +75,34 @@ export default function AdminEventDetail() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AdminEventDetailData | null>(null);
+  const [rankingCalc, setRankingCalc] = useState<RankingStatusData>({ status: 'idle', current: 0, total: 0 });
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPoll = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const startPoll = () => {
+    stopPoll();
+    pollRef.current = setInterval(async () => {
+      if (!date) return;
+      try {
+        const res = await adminGetRankingStatus(date);
+        setRankingCalc(res.data);
+        if (res.data.status !== 'calculating') {
+          stopPoll();
+          if (res.data.status === 'done') load();
+        }
+      } catch {
+        stopPoll();
+      }
+    }, 2000);
+  };
+
+  useEffect(() => () => stopPoll(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = () => {
     if (!date) return;
@@ -88,7 +116,17 @@ export default function AdminEventDetail() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 初始加载后同步一次排名计算状态
+  const syncRankingStatus = async () => {
+    if (!date) return;
+    try {
+      const res = await adminGetRankingStatus(date);
+      setRankingCalc(res.data);
+      if (res.data.status === 'calculating') startPoll();
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => { load(); syncRankingStatus(); }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-refresh rankings once on load if pubgEnabled and no rankings yet
   useEffect(() => {
@@ -137,7 +175,8 @@ export default function AdminEventDetail() {
   const handleRefreshRankings = async () => {
     try {
       await adminRefreshRankings(date!);
-      message.success('战绩刷新已启动，请稍后刷新页面查看');
+      setRankingCalc({ status: 'calculating', current: 0, total: 0 });
+      startPoll();
     } catch (err: unknown) {
       message.error(err instanceof Error ? err.message : '刷新失败');
     }
@@ -157,6 +196,8 @@ export default function AdminEventDetail() {
     try {
       await adminEndEvent(date!);
       message.success('结束时间已记录，战绩刷新已自动触发');
+      setRankingCalc({ status: 'calculating', current: 0, total: 0 });
+      startPoll();
       load();
     } catch (err: unknown) {
       message.error(err instanceof Error ? err.message : '操作失败');
@@ -265,7 +306,16 @@ export default function AdminEventDetail() {
           <Button onClick={() => navigate(`/admin/events/${date}/edit`)}>编辑活动</Button>
           <Button icon={<PlayCircleOutlined />} onClick={handleStart}>记录开始时间</Button>
           <Button icon={<StopOutlined />} onClick={handleEnd}>记录结束时间</Button>
-          {pubgEnabled && <Button icon={<ReloadOutlined />} onClick={handleRefreshRankings}>重新计算战绩</Button>}
+          {pubgEnabled && (
+            <Button
+              icon={rankingCalc.status === 'calculating' ? <LoadingOutlined /> : <ReloadOutlined />}
+              onClick={handleRefreshRankings}
+              loading={false}
+              disabled={rankingCalc.status === 'calculating'}
+            >
+              {rankingCalc.status === 'calculating' ? '计算中…' : '重新计算战绩'}
+            </Button>
+          )}
           {!ev.ended && <Button icon={<ClearOutlined />} danger onClick={handleClear}>清空报名</Button>}
           <Button icon={<DeleteOutlined />} danger type="primary" onClick={handleDelete}>删除活动</Button>
         </Space>
@@ -306,6 +356,26 @@ export default function AdminEventDetail() {
                 style={{ marginBottom: 16 }}
               />
             </>
+          )}
+
+          {pubgEnabled && rankingCalc.status === 'calculating' && (
+            <div style={{ margin: '12px 0 8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <LoadingOutlined style={{ color: 'var(--primary)' }} />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  正在计算战绩…
+                  {rankingCalc.total > 0 && ` (${rankingCalc.current}/${rankingCalc.total})`}
+                </span>
+              </div>
+              {rankingCalc.total > 0 && (
+                <Progress
+                  percent={Math.round((rankingCalc.current / rankingCalc.total) * 100)}
+                  size="small"
+                  status="active"
+                  format={() => `${rankingCalc.current}/${rankingCalc.total}`}
+                />
+              )}
+            </div>
           )}
 
           {pubgEnabled && rankings && rankings.length > 0 && (

@@ -22,10 +22,11 @@ type AdminAPI struct {
 	db   *sql.DB
 	cfg  *config.Config
 	auth *middleware.AuthMiddleware
+	jobs *RankingJobManager
 }
 
 func NewAdminAPI(db *sql.DB, cfg *config.Config, auth *middleware.AuthMiddleware) *AdminAPI {
-	return &AdminAPI{db: db, cfg: cfg, auth: auth}
+	return &AdminAPI{db: db, cfg: cfg, auth: auth, jobs: newRankingJobManager()}
 }
 
 // LoginPost 管理员登录
@@ -617,7 +618,7 @@ func (a *AdminAPI) ExportCSV(w http.ResponseWriter, r *http.Request) {
 	cw.Flush()
 }
 
-// RefreshRankings 刷新 PUBG 排名
+// RefreshRankings 刷新 PUBG 排名（打断正在进行的计算并重新开始）
 func (a *AdminAPI) RefreshRankings(w http.ResponseWriter, r *http.Request) {
 	if a.cfg.PUBGAPIKey == "" {
 		Error(w, http.StatusForbidden, "PUBG API Key 未配置")
@@ -640,19 +641,45 @@ func (a *AdminAPI) RefreshRankings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var total int
+	a.db.QueryRow(`SELECT COUNT(*) FROM registrations WHERE event_id=? AND status != 'cancelled'`, eventID).Scan(&total)
+
+	ctx, _ := a.jobs.Start(eventID, total)
 	client := service.NewPUBGClient(a.cfg.PUBGAPIKey, a.cfg.PUBGShard)
 	go func() {
 		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("[PUBG] RefreshEventRankings panic for event %d: %v", eventID, r)
+			if rec := recover(); rec != nil {
+				log.Printf("[PUBG] RefreshEventRankings panic for event %d: %v", eventID, rec)
 			}
+			a.jobs.Done(eventID)
 		}()
-		if _, err := service.RefreshEventRankings(a.db, client, eventID, actualStart, actualEnd); err != nil {
+		onProgress := func(current, t int) { a.jobs.SetProgress(eventID, current, t) }
+		if _, err := service.RefreshEventRankings(ctx, a.db, client, eventID, actualStart, actualEnd, onProgress); err != nil {
 			log.Printf("[PUBG] RefreshEventRankings error for event %d: %v", eventID, err)
 		}
 	}()
 
 	Success(w, map[string]string{"msg": "ranking_refresh_started"})
+}
+
+// GetRankingStatus 返回当前活动战绩计算状态
+func (a *AdminAPI) GetRankingStatus(w http.ResponseWriter, r *http.Request) {
+	date := chi.URLParam(r, "date")
+	if !validateDate(date) {
+		Error(w, http.StatusBadRequest, "日期格式不正确")
+		return
+	}
+	var eventID int64
+	if err := a.db.QueryRow(`SELECT id FROM events WHERE event_date=?`, date).Scan(&eventID); err != nil {
+		Error(w, http.StatusNotFound, "活动不存在")
+		return
+	}
+	status, current, total := a.jobs.GetStatus(eventID)
+	Success(w, map[string]interface{}{
+		"status":  status,
+		"current": current,
+		"total":   total,
+	})
 }
 
 // StartEvent 快捷记录活动实际开始时间
@@ -717,14 +744,19 @@ func (a *AdminAPI) EndEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if a.cfg.PUBGAPIKey != "" {
+		var endTotal int
+		a.db.QueryRow(`SELECT COUNT(*) FROM registrations WHERE event_id=? AND status != 'cancelled'`, eventID).Scan(&endTotal)
+		endCtx, _ := a.jobs.Start(eventID, endTotal)
 		client := service.NewPUBGClient(a.cfg.PUBGAPIKey, a.cfg.PUBGShard)
 		go func() {
 			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("[PUBG] RefreshEventRankings panic for event %d: %v", eventID, r)
+				if rec := recover(); rec != nil {
+					log.Printf("[PUBG] RefreshEventRankings panic for event %d: %v", eventID, rec)
 				}
+				a.jobs.Done(eventID)
 			}()
-			if _, err := service.RefreshEventRankings(a.db, client, eventID, actualStart, now); err != nil {
+			onProgress := func(current, t int) { a.jobs.SetProgress(eventID, current, t) }
+			if _, err := service.RefreshEventRankings(endCtx, a.db, client, eventID, actualStart, now, onProgress); err != nil {
 				log.Printf("[PUBG] RefreshEventRankings error for event %d: %v", eventID, err)
 			}
 		}()

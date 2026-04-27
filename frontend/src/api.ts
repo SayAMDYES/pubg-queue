@@ -208,6 +208,15 @@ export const adminDeleteEvent = (date: string) =>
 export const adminRefreshRankings = (date: string) =>
   request.post<unknown, ApiResponse<{ msg: string }>>(`/admin/events/${date}/refresh-rankings`);
 
+export interface RankingStatusData {
+  status: 'idle' | 'calculating' | 'done';
+  current: number;
+  total: number;
+}
+
+export const adminGetRankingStatus = (date: string) =>
+  request.get<unknown, ApiResponse<RankingStatusData>>(`/admin/events/${date}/ranking-status`);
+
 export const adminStartEvent = (date: string) =>
   request.post<unknown, ApiResponse<{ actualStart: string }>>(`/admin/events/${date}/start`);
 

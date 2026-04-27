@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/csv"
 	"fmt"
@@ -493,7 +494,7 @@ func (a *AdminHandlers) RefreshRankings(w http.ResponseWriter, r *http.Request) 
 				log.Printf("[PUBG] RefreshEventRankings panic for event %d: %v", eventID, r)
 			}
 		}()
-		if _, err := service.RefreshEventRankings(a.db, client, eventID, actualStart, actualEnd); err != nil {
+		if _, err := service.RefreshEventRankings(context.Background(), a.db, client, eventID, actualStart, actualEnd, nil); err != nil {
 			log.Printf("[PUBG] RefreshEventRankings error for event %d: %v", eventID, err)
 		}
 	}()

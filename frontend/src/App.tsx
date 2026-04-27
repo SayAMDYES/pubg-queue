@@ -64,6 +64,10 @@ function App() {
             colorBgContainer: 'transparent',
             labelBg: 'transparent',
           },
+          Form: {
+            labelColor: '#dde1e9',
+            colorText: '#dde1e9',
+          },
         },
       }}
     >

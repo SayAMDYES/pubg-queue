@@ -509,8 +509,21 @@ body {
 
 .ant-form-item-label > label {
   font-size: 12px !important;
-  color: var(--text-muted) !important;
+  color: var(--text) !important;
   letter-spacing: 0.05em;
+}
+
+/* 深色模式下报名表单输入框内文字 */
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selection-item,
+.ant-select-selection-search-input {
+  color: var(--text) !important;
+}
+
+.ant-form-item-explain-error {
+  color: var(--danger) !important;
+  font-size: 12px;
 }
 
 /* ── Focus-visible ─────────────────────────────────────────── */

@@ -6,6 +6,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -287,8 +288,8 @@ type PlayerMatchRangeStats struct {
 }
 
 // GetPlayerMatchesInTimeRange fetches and aggregates all recent matches for a player
-// that fall within the [from, to] time window.
-func (c *PUBGClient) GetPlayerMatchesInTimeRange(playerName string, from, to time.Time) (*PlayerMatchRangeStats, error) {
+// that fall within the [from, to] time window. ctx is checked before each API call.
+func (c *PUBGClient) GetPlayerMatchesInTimeRange(ctx context.Context, playerName string, from, to time.Time) (*PlayerMatchRangeStats, error) {
 	accountID, matchIDs, err := c.getPlayerAccountIDAndMatches(playerName)
 	if err != nil {
 		return nil, err
@@ -296,6 +297,9 @@ func (c *PUBGClient) GetPlayerMatchesInTimeRange(playerName string, from, to tim
 
 	result := &PlayerMatchRangeStats{GameName: playerName}
 	for _, matchID := range matchIDs {
+		if ctx.Err() != nil {
+			return result, ctx.Err()
+		}
 		time.Sleep(pubgRateLimitDelay)
 		ms, err := c.getMatchPlayerStats(matchID, accountID)
 		if err != nil {
@@ -428,9 +432,9 @@ func parseLocalDateTime(s string) (time.Time, error) {
 
 // RefreshEventRankings fetches stats for all active registrations of an event,
 // computes scores and labels, and writes results to event_rankings.
-// If actualStart/actualEnd are non-empty, uses match history for that time range;
-// otherwise falls back to current-season stats.
-func RefreshEventRankings(db *sql.DB, client *PUBGClient, eventID int64, actualStart, actualEnd string) ([]RankEntry, error) {
+// If actualStart/actualEnd are non-empty, uses match history for that time range.
+// onProgress is called with (current, total) after each player is processed; may be nil.
+func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, eventID int64, actualStart, actualEnd string, onProgress func(current, total int)) ([]RankEntry, error) {
 	rows, err := db.Query(`
 		SELECT id, name FROM registrations
 		WHERE event_id=? AND status != 'cancelled'
@@ -469,10 +473,17 @@ func RefreshEventRankings(db *sql.DB, client *PUBGClient, eventID int64, actualS
 		return nil, nil
 	}
 
+	total := len(regs)
 	var entries []RankEntry
-	for _, r := range regs {
+	for i, r := range regs {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if onProgress != nil {
+			onProgress(i, total)
+		}
 		time.Sleep(pubgRateLimitDelay)
-	rangeStats, err := client.GetPlayerMatchesInTimeRange(r.name, from, to)
+		rangeStats, err := client.GetPlayerMatchesInTimeRange(ctx, r.name, from, to)
 		if err != nil {
 			entries = append(entries, RankEntry{RegID: r.id, GameName: r.name})
 			continue
@@ -490,6 +501,10 @@ func RefreshEventRankings(db *sql.DB, client *PUBGClient, eventID int64, actualS
 			KDA:         rangeStats.KDA,
 			Score:       score,
 		})
+	}
+
+	if onProgress != nil {
+		onProgress(total, total)
 	}
 
 	// Sort by score descending, then kills descending
