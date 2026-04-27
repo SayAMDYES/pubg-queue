@@ -657,14 +657,19 @@ func (a *AdminAPI) RefreshRankings(w http.ResponseWriter, r *http.Request) {
 	ctx, _ := a.jobs.Start(eventID, total)
 	client := service.NewPUBGClient(a.cfg.PUBGAPIKey, a.cfg.PUBGShard)
 	go func() {
+		finalPhase := JobPhaseFailed
 		defer func() {
 			if rec := recover(); rec != nil {
 				log.Printf("[PUBG] RefreshEventRankings panic for event %d: %v", eventID, rec)
 			}
-			a.jobs.Done(eventID)
+			a.jobs.Done(eventID, finalPhase)
 		}()
 		onProgress := func(current, t int) { a.jobs.SetProgress(eventID, current, t) }
-		if _, err := service.RefreshEventRankings(ctx, a.db, client, eventID, actualStart, actualEnd, onProgress); err != nil {
+		onPhase := func(phase string) {
+			a.jobs.SetPhase(eventID, phase)
+			finalPhase = phase
+		}
+		if _, err := service.RefreshEventRankings(ctx, a.db, client, eventID, actualStart, actualEnd, onProgress, onPhase); err != nil {
 			log.Printf("[PUBG] RefreshEventRankings error for event %d: %v", eventID, err)
 		}
 	}()
@@ -684,9 +689,10 @@ func (a *AdminAPI) GetRankingStatus(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusNotFound, "活动不存在")
 		return
 	}
-	status, current, total := a.jobs.GetStatus(eventID)
+	status, phase, current, total := a.jobs.GetStatus(eventID)
 	Success(w, map[string]interface{}{
 		"status":  status,
+		"phase":   phase,
 		"current": current,
 		"total":   total,
 	})
@@ -759,14 +765,19 @@ func (a *AdminAPI) EndEvent(w http.ResponseWriter, r *http.Request) {
 		endCtx, _ := a.jobs.Start(eventID, endTotal)
 		client := service.NewPUBGClient(a.cfg.PUBGAPIKey, a.cfg.PUBGShard)
 		go func() {
+			finalPhase := JobPhaseFailed
 			defer func() {
 				if rec := recover(); rec != nil {
 					log.Printf("[PUBG] RefreshEventRankings panic for event %d: %v", eventID, rec)
 				}
-				a.jobs.Done(eventID)
+				a.jobs.Done(eventID, finalPhase)
 			}()
 			onProgress := func(current, t int) { a.jobs.SetProgress(eventID, current, t) }
-			if _, err := service.RefreshEventRankings(endCtx, a.db, client, eventID, actualStart, now, onProgress); err != nil {
+			onPhase := func(phase string) {
+				a.jobs.SetPhase(eventID, phase)
+				finalPhase = phase
+			}
+			if _, err := service.RefreshEventRankings(endCtx, a.db, client, eventID, actualStart, now, onProgress, onPhase); err != nil {
 				log.Printf("[PUBG] RefreshEventRankings error for event %d: %v", eventID, err)
 			}
 		}()

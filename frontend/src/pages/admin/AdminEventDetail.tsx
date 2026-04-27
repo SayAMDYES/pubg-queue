@@ -4,6 +4,7 @@ import { Table, Tag, Button, Space, message, Modal, Spin, Descriptions, Input, P
 import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, DeleteOutlined, PlayCircleOutlined, StopOutlined, PlusOutlined, CloseOutlined, LoadingOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, adminGetRankingStatus, adminStartEvent, adminEndEvent, adminManualRegister, adminRemoveRegistration, type AdminEventDetailData, type RankEntry, type RankingStatusData } from '../../api';
 import { formatDateTime } from '../../utils';
+import { resolveRankTags, confidenceLabel, confidenceColor, analysisStatusLabel } from '../../rankingTags';
 
 /** 格式化时间范围，支持 HH:mm 和 YYYY-MM-DDTHH:mm 两种输入 */
 function formatTimeRange(start?: string, end?: string): string {
@@ -29,96 +30,6 @@ const statusColor: Record<string, string> = {
   cancelled: 'red',
 };
 
-type TagDef = { label: string; color: string };
-
-/** 按队内相对战绩计算多风格标签，替代旧的称号体系 */
-function computeRankTags(record: RankEntry, all: RankEntry[]): TagDef[] {
-  const active = all.filter(r => r.Matches > 0);
-  if (active.length === 0) return [];
-
-  const mean = (fn: (r: RankEntry) => number): number => {
-    const vals = active.map(fn).filter(v => v > 0);
-    return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-  };
-
-  const avgADR = mean(r => r.AvgDamage);
-  const avgKPG = mean(r => r.KPG || 0);
-  const avgKDA = mean(r => r.KDA || 0);
-  const avgDmgTaken = mean(r => r.AvgDamageTaken || 0);
-  const avgTradeRatio = mean(r => r.TradeRatio || 0);
-  const avgTimePerMatch = mean(r => r.Matches > 0 ? r.TimeAlive / r.Matches : 0);
-  const avgFirePerMatch = mean(r => r.TelemetryMatches > 0 ? r.FireCount / r.TelemetryMatches : 0);
-  const avgHitEff = mean(r => r.HitEfficiency || 0);
-  const avgDeathsPerMatch = mean(r => r.Matches > 0 ? r.Deaths / r.Matches : 0);
-
-  const hasTel = record.TelemetryMatches > 0;
-  const adr = record.AvgDamage;
-  const kpg = record.KPG || 0;
-  const kda = record.KDA || 0;
-  const dmgTaken = record.AvgDamageTaken || 0;
-  const trade = record.TradeRatio || 0;
-  const timePerMatch = record.Matches > 0 ? record.TimeAlive / record.Matches : 0;
-  const firePerMatch = record.TelemetryMatches > 0 ? record.FireCount / record.TelemetryMatches : 0;
-  const hitEff = record.HitEfficiency || 0;
-  const deathsPerMatch = record.Matches > 0 ? record.Deaths / record.Matches : 0;
-
-  const result: TagDef[] = [];
-
-  if (record.RankNo === 1) result.push({ label: '🏅 MVP', color: '#f0a500' });
-
-  // 钢枪王: ADR 和 KPG 均高于队均 20%
-  if (avgADR > 0 && adr > avgADR * 1.2 && avgKPG > 0 && kpg > avgKPG * 1.2) {
-    result.push({ label: '🔥 钢枪王', color: '#ff4d4f' });
-  }
-
-  // 突破手: 承伤高 + 输出高 + 换血基本不亏（需遥测）
-  if (hasTel && avgDmgTaken > 0 && dmgTaken > avgDmgTaken * 1.2 && avgADR > 0 && adr > avgADR * 1.1 && trade >= 0.85) {
-    result.push({ label: '⚡ 突破手', color: '#fa8c16' });
-  }
-
-  // 架枪位: 承伤低 + 换血比高 + ADR 达标（需遥测）
-  if (hasTel && avgDmgTaken > 0 && dmgTaken < avgDmgTaken * 0.75 && avgTradeRatio > 0 && trade > avgTradeRatio * 1.2 && avgADR > 0 && adr >= avgADR * 0.85) {
-    result.push({ label: '🎯 架枪位', color: '#722ed1' });
-  }
-
-  // 稳健吃鸡: 生存高 + ADR 达标 + 死亡少 + 换血赚（需遥测）
-  if (hasTel && avgTimePerMatch > 0 && timePerMatch > avgTimePerMatch * 1.1 && avgADR > 0 && adr >= avgADR * 0.9 && avgDeathsPerMatch > 0 && deathsPerMatch < avgDeathsPerMatch * 0.9 && trade >= 1.0) {
-    result.push({ label: '🛡️ 稳健', color: '#1677ff' });
-  }
-
-  // 战地记者: 活着 + ADR 极低（< 40% 队均）
-  if (avgTimePerMatch > 0 && timePerMatch >= avgTimePerMatch * 0.85 && avgADR > 0 && adr < avgADR * 0.4) {
-    result.push({ label: '📷 战地记者', color: '#faad14' });
-  // 伏地老六: 生存高 + ADR 低 + 承伤低 + 开火少（需遥测）
-  } else if (hasTel && avgTimePerMatch > 0 && timePerMatch > avgTimePerMatch * 1.1 && avgADR > 0 && adr < avgADR * 0.65 && avgDmgTaken > 0 && dmgTaken < avgDmgTaken * 0.75 && avgFirePerMatch > 0 && firePerMatch < avgFirePerMatch * 0.75) {
-    result.push({ label: '🐢 伏地老六', color: '#52c41a' });
-  // 怂: 无遥测时生存高 + ADR 低
-  } else if (!hasTel && avgTimePerMatch > 0 && timePerMatch > avgTimePerMatch * 1.1 && avgADR > 0 && adr < avgADR * 0.65) {
-    result.push({ label: '😤 怂', color: '#8c8c8c' });
-  }
-
-  // 菜/打不过: 承伤高 + 输出低 + 换血亏 + K/D 低（需遥测）
-  if (hasTel && avgDmgTaken > 0 && dmgTaken > avgDmgTaken * 1.2 && avgADR > 0 && adr < avgADR * 0.8 && trade < 0.75 && avgKDA > 0 && kda < avgKDA * 0.8) {
-    result.push({ label: '😵 打不过', color: '#ff7875' });
-  }
-
-  // 夕阳红枪法: 开火多 + 命中效低 + ADR 低（需遥测）
-  if (hasTel && avgFirePerMatch > 0 && firePerMatch > avgFirePerMatch * 1.2 && avgHitEff > 0 && hitEff < avgHitEff * 0.75 && avgADR > 0 && adr < avgADR * 0.8) {
-    result.push({ label: '💫 夕阳红枪法', color: '#bfbfbf' });
-  }
-
-  // 盒子精: 生存短 + ADR 低 + K/D 低 + 死亡多
-  if (avgTimePerMatch > 0 && timePerMatch < avgTimePerMatch * 0.65 && avgADR > 0 && adr < avgADR * 0.7 && avgKDA > 0 && kda < avgKDA * 0.7 && avgDeathsPerMatch > 0 && deathsPerMatch > avgDeathsPerMatch * 1.3) {
-    result.push({ label: '📦 盒子精', color: '#8c8c8c' });
-  }
-
-  // 均衡: 除 MVP 外没有任何风格标签
-  const hasStyle = result.some(t => !t.label.includes('MVP'));
-  if (!hasStyle) result.push({ label: '⚖️ 均衡', color: '#13c2c2' });
-
-  return result;
-}
-
 export default function AdminEventDetail() {
   const { date } = useParams<{ date: string }>();
   const navigate = useNavigate();
@@ -126,6 +37,7 @@ export default function AdminEventDetail() {
   const [data, setData] = useState<AdminEventDetailData | null>(null);
   const [rankingCalc, setRankingCalc] = useState<RankingStatusData>({ status: 'idle', current: 0, total: 0 });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastPhaseRef = useRef<string>('');
 
   const stopPoll = () => {
     if (pollRef.current) {
@@ -141,6 +53,14 @@ export default function AdminEventDetail() {
       try {
         const res = await adminGetRankingStatus(date);
         setRankingCalc(res.data);
+        const phase = res.data.phase || '';
+        // 进入 basic_ready 阶段就先拉一次 detail，让基础榜立刻显示。
+        if (phase && phase !== lastPhaseRef.current) {
+          lastPhaseRef.current = phase;
+          if (phase === 'basic_ready' || phase === 'telemetry_processing') {
+            load();
+          }
+        }
         if (res.data.status !== 'calculating') {
           stopPoll();
           if (res.data.status === 'done') load();
@@ -306,7 +226,7 @@ export default function AdminEventDetail() {
       key: 'rankLabel',
       render: (_: string, record: RankEntry) => (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, minWidth: 120 }}>
-          {computeRankTags(record, rankings || []).map((t, i) => (
+          {resolveRankTags(record, rankings || []).map((t, i) => (
             <Tag key={i} color={t.color}>{t.label}</Tag>
           ))}
         </div>
@@ -475,7 +395,9 @@ export default function AdminEventDetail() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <LoadingOutlined style={{ color: 'var(--primary)' }} />
                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  正在计算战绩…
+                  {rankingCalc.phase === 'basic_ready' && '基础榜单已就绪，遥测分析中…'}
+                  {rankingCalc.phase === 'telemetry_processing' && '遥测分析中…'}
+                  {(!rankingCalc.phase || rankingCalc.phase === 'match_fetching' || rankingCalc.phase === 'idle') && '获取比赛数据中…'}
                   {rankingCalc.total > 0 && ` (${rankingCalc.current}/${rankingCalc.total})`}
                 </span>
               </div>
@@ -490,6 +412,12 @@ export default function AdminEventDetail() {
             </div>
           )}
 
+          {pubgEnabled && rankingCalc.status === 'done' && rankingCalc.phase === 'partial_ready' && (
+            <div style={{ margin: '12px 0 8px', fontSize: 12, color: '#faad14' }}>
+              ⚠️ 部分场次的遥测数据缺失，承伤 / 换血比 / 命中效可能不完整。
+            </div>
+          )}
+
           {pubgEnabled && rankings && rankings.length > 0 && (
             <>
               <div className="section-label" style={{ margin: '12px 0 8px' }}>战绩排名</div>
@@ -500,6 +428,28 @@ export default function AdminEventDetail() {
                 size="small"
                 scroll={{ x: 1300 }}
                 rowKey="RankNo"
+                expandable={{
+                  rowExpandable: (record) => Boolean(record.Comment) || Boolean(record.Confidence) || Boolean(record.AnalysisStatus),
+                  expandedRowRender: (record) => {
+                    const renderScore = (v: number) => v && v > 0 ? v.toFixed(1) : '-';
+                    return (
+                      <div style={{ padding: '4px 12px', display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+                        {record.Comment && (
+                          <div><span style={{ color: 'var(--text-muted)', marginRight: 6 }}>评价：</span>{record.Comment}</div>
+                        )}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: 'var(--text-muted)' }}>
+                          {record.Confidence && (
+                            <span>置信度：<Tag color={confidenceColor[record.Confidence] || 'default'}>{confidenceLabel[record.Confidence] || record.Confidence}</Tag></span>
+                          )}
+                          {record.AnalysisStatus && (
+                            <span>分析状态：{analysisStatusLabel[record.AnalysisStatus] || record.AnalysisStatus}</span>
+                          )}
+                          <span>战斗 {renderScore(record.CombatScore)} · 效率 {renderScore(record.EfficiencyScore)} · 生存 {renderScore(record.SurvivalScore)} · 团队 {renderScore(record.TeamScore)}</span>
+                        </div>
+                      </div>
+                    );
+                  },
+                }}
               />
             </>
           )}

@@ -12,10 +12,17 @@
 - Docker Compose 依赖 `ADMIN_PASS`、`SESSION_SECRET`、`CSRF_SECRET` 等环境变量。
 
 ## 代码结构
-- `internal/handler`：HTTP 处理器，包含日历页、活动页、离队、管理后台等逻辑。
-- `internal/service`：业务逻辑，包括报名排队、用户账号、PUBG API 集成。
+- `internal/api`：JSON API 处理器（前台 + 管理 + 战绩任务状态机 `ranking_jobs.go`）。
+- `internal/handler`：旧版 HTML 处理器，已弃用，仅保留兼容路径。
+- `internal/service`：业务逻辑。
+  - `queue.go` / `user.go`：排队和用户。
+  - `pubg.go`：PUBG API 客户端，`RefreshEventRankings` 拆分两阶段写库。
+  - `pubg_analysis_v2.go`：match / telemetry 解析与缓存（`pubg_match_cache_v2`、`pubg_player_match_features_v2`）。
+  - `pubg_lookup_cache.go`：玩家 → accountId 短期缓存（`pubg_player_lookup_cache`，5 分钟 TTL）。
+  - `pubg_ranking.go` / `pubg_ranking_test.go`：4 项分数 + 多标签 + 主称号 + 评价 + 置信度。
 - `internal/middleware`：认证、限流、安全头和封禁逻辑。
 - `internal/model`：数据模型定义。
+- `frontend/src/rankingTags.ts`：前端战绩多标签解析（优先后端 `Tags`，v1 旧数据 fallback 本地）。
 - `cmd/genhash`：历史密码哈希工具，当前主程序管理员密码以 `--admin-pass` 明文参数启动后即时哈希。
 
 ## 开发约束

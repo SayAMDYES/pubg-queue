@@ -150,10 +150,17 @@ export const adminCreateEvent = (data: {
   actualEnd: string;
 }) => request.post<unknown, ApiResponse<{ eventDate: string }>>('/admin/events', data);
 
+export interface RankTag {
+  code: string;
+  label: string;
+  color: string;
+}
+
 export interface RankEntry {
   RegID: number;
   GameName: string;
   AnalysisVersion: string;
+  AnalysisStatus: string;
   EventMatches: number;
   Matches: number;
   MissedMatches: number;
@@ -161,6 +168,10 @@ export interface RankEntry {
   Kills: number;
   Deaths: number;
   Assists: number;
+  DBNOs: number;
+  Revives: number;
+  HeadshotKills: number;
+  Top10Count: number;
   TotalDamage: number;
   TelemetryDamage: number;
   TelemetryMatches: number;
@@ -173,6 +184,14 @@ export interface RankEntry {
   KDA: number;
   KPG: number;
   Score: number;
+  CombatScore: number;
+  EfficiencyScore: number;
+  SurvivalScore: number;
+  TeamScore: number;
+  PrimaryTitle: RankTag | null;
+  Tags: RankTag[] | null;
+  Comment: string;
+  Confidence: string;
   RankNo: number;
   RankLabel: string;
   TimeAlive: number; // total seconds survived
@@ -222,8 +241,18 @@ export const adminDeleteEvent = (date: string) =>
 export const adminRefreshRankings = (date: string) =>
   request.post<unknown, ApiResponse<{ msg: string }>>(`/admin/events/${date}/refresh-rankings`);
 
+export type RankingPhase =
+  | 'idle'
+  | 'match_fetching'
+  | 'basic_ready'
+  | 'telemetry_processing'
+  | 'full_ready'
+  | 'partial_ready'
+  | 'failed';
+
 export interface RankingStatusData {
   status: 'idle' | 'calculating' | 'done';
+  phase?: RankingPhase;
   current: number;
   total: number;
 }

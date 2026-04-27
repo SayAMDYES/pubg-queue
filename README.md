@@ -63,14 +63,19 @@
 - 重置用户密码
 - 查看用户报名历史
 
-#### 🏆 战绩排名
-- 若已配置实际开战/结束时间，刷新时精确查询该时段内的所有场次
-- 未配置实际时间时，回退为赛季总数据统计
-- 统计指标：场次 / 击杀 / 死亡 / 助攻 / KD/A / 场均伤害 / **总生存时长**
-- 总生存时长：累计该活动时间段内所有场次的存活秒数（显示为"X分XX秒"）
-- 计算优化：PUBG API 返回对局列表按时间倒序，获取到早于活动开始时间的对局时立即停止，显著减少不必要的 API 调用
-- 综合评分公式：`KDA × 15 + 场均伤害 × 0.05`
-- 多档称号：🔥 战神 / ⚔️ 精锐 / 🛡️ 骨干 / 🐣 菜鸟 / 💀 战犯 / 👻 缺席
+#### 🏆 战绩排名（v2 增强版）
+- **活动并集口径**：以"同一比赛中至少有 2 个报名玩家出现"作为活动局判定，得到活动并集 `eventMatches`；同时给每个玩家保留个人出勤局数 `attendanceCount`，避免缺席被算成"打得差"
+- **基础统计**：场次 / 出勤率 / 击杀 / 死亡 / 助攻 / DBNO / 爆头 / Top10 / K/D / KPG / ADR / 总生存时长
+- **遥测衍生**：基于 telemetry 解析 `damageTaken / fireCount / makeGroggy / revive`，得到 `场均承伤 / 换血比 / 命中效`
+- **4 项分数（队内 min-max 归一化）**：
+  - 战斗分（35%）：ADR + KPG + K/D + DBNO/场 + 爆头/场
+  - 效率分（25%）：换血比 + 命中效 + ADR + K/D（无遥测时退化为 ADR/K/D）
+  - 生存分（20%）：场均生存 + Top10 率 + 死亡率反向
+  - 团队分（15%）：助攻率 + 拉人率 + 伤害量 + DBNO + KPG
+  - 综合分 = 战斗 35% + 效率 25% + 生存 20% + 团队 15%
+- **多标签 + 主称号 + 评价 + 置信度**（13 个 MVP 标签：钢枪王 / 突破手 / 架枪位 / 稳健 / 运营大师 / 医疗兵 / 战地记者 / 伏地老六 / 怂 / 打不过 / 夕阳红枪法 / 盒子精 / 均衡）：标签由后端基于队内均值生成，前端直接消费 JSON；置信度按出勤场次分 5 档（极低 / 低 / 中 / 高 / 很高），样本不足时禁止贴强标签
+- **两阶段任务状态机**：刷新过程拆为 `match_fetching → basic_ready → telemetry_processing → full_ready / partial_ready`。基础榜单一就绪就先写库，前端立即显示，承伤 / 换血比 / 命中效随后回填；telemetry 部分失败时显示"部分样本缺失"提示
+- **缓存**：`pubg_match_cache_v2` 缓存 match payload，`pubg_player_match_features_v2` 缓存玩家单局遥测特征，`pubg_player_lookup_cache` 缓存玩家 → accountId + 最近 matchIds（5 分钟 TTL），重复刷新可大量跳过受限流的 players 接口
 - 已记录实际开始/结束时间后，对应"记录时间"按钮自动隐藏
 
 ## 🔧 技术栈
@@ -104,6 +109,7 @@
 │   │   │   ├── UserLoginPage.tsx   # 前台用户登录/注册
 │   │   │   └── admin/       # 管理后台页面
 │   │   ├── api.ts           # API 接口定义
+│   │   ├── rankingTags.ts   # 战绩多标签解析与置信度文案
 │   │   ├── request.ts       # Axios 封装
 │   │   ├── App.tsx          # 路由入口
 │   │   └── main.tsx         # 应用入口
@@ -115,13 +121,21 @@
 │   │   ├── response.go      # 统一响应结构
 │   │   ├── public.go        # 公共 API（日历、活动、报名、离队、用户登录）
 │   │   ├── admin.go         # 管理 API
+│   │   ├── ranking_jobs.go  # 战绩刷新任务状态机（多阶段）
 │   │   └── helpers.go       # 公用辅助函数
 │   ├── config/              # 环境配置
 │   ├── db/                  # SQLite 打开与迁移
 │   ├── handler/             # 旧版 HTML 处理器（已弃用，保留兼容）
 │   ├── middleware/           # 认证、限流、安全头、封禁
 │   ├── model/               # 数据模型
-│   ├── service/             # 业务逻辑（报名、用户、PUBG API）
+│   ├── service/             # 业务逻辑
+│   │   ├── queue.go              # 报名 / 离队 / 候补递补
+│   │   ├── user.go               # 用户注册 / 登录
+│   │   ├── pubg.go               # PUBG API 客户端 + 活动战绩刷新
+│   │   ├── pubg_analysis_v2.go   # match / telemetry 解析与缓存
+│   │   ├── pubg_lookup_cache.go  # players → accountId 短期缓存
+│   │   ├── pubg_ranking.go       # 4 项分数 + 多标签 + 主称号 + 评价 + 置信度
+│   │   └── pubg_ranking_test.go  # 评分与标签单元测试
 │   └── tmpl/                # 旧版 HTML 模板（已弃用）
 ├── main.go                  # 程序入口（API 路由 + 嵌入前端）
 ├── Dockerfile               # 三阶段构建（Node → Go → Alpine）
@@ -252,7 +266,8 @@ make build-all
 | `/api/admin/events/{date}/clear` | POST | 清空报名 |
 | `/api/admin/events/{date}/start` | POST | 记录活动开始时间（当前时间） |
 | `/api/admin/events/{date}/end` | POST | 记录活动结束时间（当前时间，并自动触发战绩刷新） |
-| `/api/admin/events/{date}/refresh-rankings` | POST | 刷新战绩排名 |
+| `/api/admin/events/{date}/refresh-rankings` | POST | 刷新战绩排名（异步） |
+| `/api/admin/events/{date}/ranking-status` | GET | 战绩刷新任务状态（status / phase / 进度） |
 | `/api/admin/events/{date}/export` | GET | 导出 CSV |
 | `/api/admin/users` | GET | 用户列表 |
 | `/api/admin/users/{id}` | GET | 用户详情 |
@@ -294,11 +309,16 @@ make build-all
 - 玩家报名后异步查询其 PUBG 账号赛季数据，缓存总场次与 KD/A
 - 活动页面自动展示，找不到账号时显示灰色提示
 
-### 后台战绩排名刷新
-- 若活动配置了实际开战时间和实际结束时间，按该时段内的历史场次统计
-- 否则使用赛季总数据回退
-- 评分：`KDA × 15 + 场均伤害 × 0.05`（KDA = (击杀+助攻) / max(死亡, 1)）
-- 为适配免费限速（10 req/min），请求之间自动等待 6 秒
+### 后台战绩排名刷新（v2 流水线）
+- 整体流程：批量 players → 候选 matchIds → 并集判定 → match 详情 + telemetry → 4 项分数 + 多标签 → 两阶段写库
+- **限流策略**：仅 `players` 接口受 10 req/min 限制，`/matches` 与 telemetry 不计入限流；首次刷新批与批之间间隔 6 秒，5 分钟内重复刷新通过 `pubg_player_lookup_cache` 直接复用，几乎零 players 调用
+- **缓存层**：
+  - `pubg_match_cache_v2`：缓存 match 元信息 + 完整 payload + telemetry URL
+  - `pubg_player_match_features_v2`：缓存单局玩家的承伤、换血、开火、拉人特征
+  - `pubg_player_lookup_cache`：5 分钟 TTL，缓存 `playerName → accountId + matchIds`
+- **任务阶段**：基础聚合完成立刻写一次库（`analysis_status='basic_ready'`），前端先看到基础榜单；遥测全部跑完再写一次最终库（`full_ready` 或 `partial_ready`）。状态接口 `/admin/events/{date}/ranking-status` 返回 `phase` 字段供前端展示
+- **数据范围**：默认基于活动 `actual_start ~ actual_end` 时间窗内的历史比赛（PUBG API 仅保留 14 天）
+- **置信度**：按个人出勤场次（不是活动并集）分 5 档，1–2 局只显示数据不贴强标签
 
 ## 🔄 数据迁移
 

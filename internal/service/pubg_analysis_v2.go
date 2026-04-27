@@ -93,12 +93,15 @@ func parseTrackedMatchStatsPayload(matchID string, payload []byte, trackedNames 
 			ID         string `json:"id"`
 			Attributes struct {
 				Stats struct {
-					Name         string  `json:"name"`
-					Kills        int     `json:"kills"`
-					Assists      int     `json:"assists"`
-					DeathType    string  `json:"deathType"`
-					DamageDealt  float64 `json:"damageDealt"`
-					TimeSurvived float64 `json:"timeSurvived"`
+					Name          string  `json:"name"`
+					Kills         int     `json:"kills"`
+					Assists       int     `json:"assists"`
+					DBNOs         int     `json:"DBNOs"`
+					HeadshotKills int     `json:"headshotKills"`
+					WinPlace      int     `json:"winPlace"`
+					DeathType     string  `json:"deathType"`
+					DamageDealt   float64 `json:"damageDealt"`
+					TimeSurvived  float64 `json:"timeSurvived"`
 				} `json:"stats"`
 			} `json:"attributes"`
 		}
@@ -115,14 +118,17 @@ func parseTrackedMatchStatsPayload(matchID string, payload []byte, trackedNames 
 			deaths = 1
 		}
 		players[name] = MatchPlayerStats{
-			MatchID:   matchID,
-			CreatedAt: createdAt,
-			GameMode:  matchResp.Data.Attributes.GameMode,
-			Kills:     item.Attributes.Stats.Kills,
-			Deaths:    deaths,
-			Assists:   item.Attributes.Stats.Assists,
-			Damage:    item.Attributes.Stats.DamageDealt,
-			TimeAlive: item.Attributes.Stats.TimeSurvived,
+			MatchID:       matchID,
+			CreatedAt:     createdAt,
+			GameMode:      matchResp.Data.Attributes.GameMode,
+			Kills:         item.Attributes.Stats.Kills,
+			Deaths:        deaths,
+			Assists:       item.Attributes.Stats.Assists,
+			DBNOs:         item.Attributes.Stats.DBNOs,
+			HeadshotKills: item.Attributes.Stats.HeadshotKills,
+			WinPlace:      item.Attributes.Stats.WinPlace,
+			Damage:        item.Attributes.Stats.DamageDealt,
+			TimeAlive:     item.Attributes.Stats.TimeSurvived,
 		}
 	}
 

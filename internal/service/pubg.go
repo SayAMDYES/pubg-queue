@@ -187,14 +187,17 @@ func (c *PUBGClient) getCurrentSeasonID() (string, error) {
 
 // MatchPlayerStats holds a single player's stats for one match.
 type MatchPlayerStats struct {
-	MatchID   string
-	CreatedAt time.Time
-	GameMode  string
-	Kills     int
-	Deaths    int     // 1 if player died, 0 if survived
-	Assists   int
-	Damage    float64
-	TimeAlive float64 // seconds survived in this match
+	MatchID       string
+	CreatedAt     time.Time
+	GameMode      string
+	Kills         int
+	Deaths        int // 1 if player died, 0 if survived
+	Assists       int
+	DBNOs         int
+	HeadshotKills int
+	WinPlace      int
+	Damage        float64
+	TimeAlive     float64 // seconds survived in this match
 }
 
 // getPlayerAccountIDAndMatches returns account ID and list of recent match IDs for a player.
@@ -453,33 +456,53 @@ func GetCachedPlayerStats(db *sql.DB, gameName string) *CachedPlayerStats {
 
 // ─── Ranking ─────────────────────────────────────────────────────────────────
 
+// RankTag 表示一个风格画像标签（前后端通用）。
+type RankTag struct {
+	Code  string `json:"code"`
+	Label string `json:"label"`
+	Color string `json:"color"`
+}
+
 // RankEntry holds a player's ranked stats for an event.
 type RankEntry struct {
-	RegID          int64
-	GameName       string
-	AnalysisVersion string
-	EventMatches   int
-	Matches        int
-	MissedMatches  int
-	AttendanceRate float64
-	Kills          int
-	Deaths         int
-	Assists        int
-	TotalDamage    float64
-	TelemetryDamage float64
+	RegID            int64
+	GameName         string
+	AnalysisVersion  string
+	AnalysisStatus   string
+	EventMatches     int
+	Matches          int
+	MissedMatches    int
+	AttendanceRate   float64
+	Kills            int
+	Deaths           int
+	Assists          int
+	DBNOs            int
+	Revives          int
+	HeadshotKills    int
+	Top10Count       int
+	TotalDamage      float64
+	TelemetryDamage  float64
 	TelemetryMatches int
-	DamageTaken    float64
-	AvgDamageTaken float64
-	FireCount      int
-	TradeRatio     float64
-	HitEfficiency  float64
-	AvgDamage      float64
-	KDA            float64
-	KPG            float64
-	Score          float64
-	RankNo         int
-	RankLabel      string
-	TimeAlive      float64 // total seconds survived (summed across attended event matches)
+	DamageTaken      float64
+	AvgDamageTaken   float64
+	FireCount        int
+	TradeRatio       float64
+	HitEfficiency    float64
+	AvgDamage        float64
+	KDA              float64
+	KPG              float64
+	Score            float64
+	CombatScore      float64
+	EfficiencyScore  float64
+	SurvivalScore    float64
+	TeamScore        float64
+	PrimaryTitle     *RankTag
+	Tags             []RankTag
+	Comment          string
+	Confidence       string
+	RankNo           int
+	RankLabel        string
+	TimeAlive        float64 // total seconds survived (summed across attended event matches)
 }
 
 // CalcScore computes a composite score from per-attendance output.
@@ -526,7 +549,8 @@ func parseLocalDateTime(s string) (time.Time, error) {
 // computes scores and labels, and writes results to event_rankings.
 // If actualStart/actualEnd are non-empty, uses match history for that time range.
 // onProgress is called with (current, total) after each player is processed; may be nil.
-func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, eventID int64, actualStart, actualEnd string, onProgress func(current, total int)) ([]RankEntry, error) {
+// onPhase is called when the analysis phase changes (match_fetching / basic_ready / telemetry_processing / full_ready / partial_ready); may be nil.
+func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, eventID int64, actualStart, actualEnd string, onProgress func(current, total int), onPhase func(phase string)) ([]RankEntry, error) {
 	rows, err := db.Query(`
 		SELECT id, name FROM registrations
 		WHERE event_id=? AND status != 'cancelled'
@@ -582,24 +606,41 @@ func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, e
 	}
 
 	candidateMatchIDs := make(map[string]struct{})
-	for start := 0; start < len(playerNames); start += pubgPlayerBatchSize {
+
+	// 先吃 lookup cache，命中的玩家直接复用，避免重复打受限流的 players 接口。
+	cached := loadCachedPlayerLookups(db, client.shard, playerNames)
+	missingNames := make([]string, 0, len(playerNames))
+	for _, name := range playerNames {
+		if lookup, ok := cached[name]; ok {
+			for _, matchID := range lookup.MatchIDs {
+				candidateMatchIDs[matchID] = struct{}{}
+			}
+			continue
+		}
+		missingNames = append(missingNames, name)
+	}
+
+	apiCallIndex := 0
+	for start := 0; start < len(missingNames); start += pubgPlayerBatchSize {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		if start > 0 {
+		if apiCallIndex > 0 {
 			if err := sleepWithContext(ctx, pubgRateLimitDelay); err != nil {
 				return nil, err
 			}
 		}
+		apiCallIndex++
 		end := start + pubgPlayerBatchSize
-		if end > len(playerNames) {
-			end = len(playerNames)
+		if end > len(missingNames) {
+			end = len(missingNames)
 		}
-		lookups, err := client.getPlayerAccountIDsAndMatches(playerNames[start:end])
+		lookups, err := client.getPlayerAccountIDsAndMatches(missingNames[start:end])
 		if err != nil {
 			continue
 		}
-		for _, lookup := range lookups {
+		for name, lookup := range lookups {
+			saveCachedPlayerLookup(db, client.shard, name, lookup)
 			for _, matchID := range lookup.MatchIDs {
 				candidateMatchIDs[matchID] = struct{}{}
 			}
@@ -654,11 +695,39 @@ func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, e
 			entries[idx].Kills += stats.Kills
 			entries[idx].Deaths += stats.Deaths
 			entries[idx].Assists += stats.Assists
+			entries[idx].DBNOs += stats.DBNOs
+			entries[idx].HeadshotKills += stats.HeadshotKills
+			if stats.WinPlace > 0 && stats.WinPlace <= 10 {
+				entries[idx].Top10Count++
+			}
 			entries[idx].TotalDamage += stats.Damage
 			entries[idx].TimeAlive += stats.TimeAlive
 		}
 	}
 
+	for i := range entries {
+		entries[i].EventMatches = eventMatchCount
+	}
+
+	// 阶段一：基础榜单完成。先写一次库，让前端能立刻看到基础结果。
+	basicEntries := make([]RankEntry, len(entries))
+	copy(basicEntries, entries)
+	FinalizeRankings(basicEntries, "basic_ready")
+	if err := persistRankingsV2(db, eventID, basicEntries); err != nil {
+		// 写库失败不致命，仅记录。
+		_ = err
+	}
+	if onPhase != nil {
+		onPhase("basic_ready")
+	}
+
+	// 阶段二：telemetry 聚合 + 最终评分。
+	if onPhase != nil {
+		onPhase("telemetry_processing")
+	}
+
+	telemetrySuccessCount := 0
+	telemetryAttempts := 0
 	for i, eventMatch := range eventMatches {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -666,10 +735,12 @@ func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, e
 		if onProgress != nil {
 			onProgress(len(matchIDs)+i, totalProgressSteps)
 		}
+		telemetryAttempts++
 		features, err := getTelemetryFeaturesCached(ctx, db, client, eventMatch.stats.MatchID, eventMatch.stats.TelemetryURL, eventMatch.qualifyingPlayers)
 		if err != nil {
 			continue
 		}
+		telemetrySuccessCount++
 		for name := range eventMatch.qualifyingPlayers {
 			idx, ok := entryIndex[name]
 			if !ok {
@@ -683,63 +754,61 @@ func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, e
 			entries[idx].TelemetryDamage += feature.DamageDealt
 			entries[idx].DamageTaken += feature.DamageTaken
 			entries[idx].FireCount += feature.FireCount
+			entries[idx].Revives += feature.ReviveCount
 		}
 	}
 
-	for i := range entries {
-		entries[i].EventMatches = eventMatchCount
-		if eventMatchCount > entries[i].Matches {
-			entries[i].MissedMatches = eventMatchCount - entries[i].Matches
-		}
-		if eventMatchCount > 0 {
-			entries[i].AttendanceRate = float64(entries[i].Matches) / float64(eventMatchCount)
-		}
-		if entries[i].Matches > 0 {
-			entries[i].AvgDamage = entries[i].TotalDamage / float64(entries[i].Matches)
-			entries[i].KPG = float64(entries[i].Kills) / float64(entries[i].Matches)
-			entries[i].KDA = float64(entries[i].Kills) / math.Max(float64(entries[i].Deaths), 1)
-		}
-		if entries[i].TelemetryMatches > 0 {
-			entries[i].AvgDamageTaken = entries[i].DamageTaken / float64(entries[i].TelemetryMatches)
-		}
-		if entries[i].TelemetryDamage > 0 {
-			entries[i].TradeRatio = entries[i].TelemetryDamage / math.Max(entries[i].DamageTaken, 1)
-		}
-		if entries[i].FireCount > 0 {
-			entries[i].HitEfficiency = entries[i].TelemetryDamage / float64(entries[i].FireCount)
-		}
-		entries[i].Score = CalcScore(entries[i].Kills, entries[i].Matches, entries[i].AvgDamage)
+	analysisStatus := "full_ready"
+	if telemetryAttempts > 0 && telemetrySuccessCount < telemetryAttempts {
+		analysisStatus = "partial_ready"
 	}
+	if telemetryAttempts == 0 {
+		analysisStatus = "basic_ready"
+	}
+	FinalizeRankings(entries, analysisStatus)
 
 	if onProgress != nil {
 		onProgress(totalProgressSteps, totalProgressSteps)
 	}
 
-	// Sort by score descending, then kills descending
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].Score != entries[j].Score {
-			return entries[i].Score > entries[j].Score
-		}
-		return entries[i].Kills > entries[j].Kills
-	})
-
-	// Assign rank numbers and labels
-	for i := range entries {
-		entries[i].RankNo = i + 1
+	if err := persistRankingsV2(db, eventID, entries); err != nil {
+		_ = err
 	}
-	assignRankLabels(entries)
+	if onPhase != nil {
+		onPhase(analysisStatus)
+	}
 
-	// Persist to v2 rankings and keep v1 rows intact for historical compatibility.
-	db.Exec(`DELETE FROM event_rankings_v2 WHERE event_id=?`, eventID)
+	return entries, nil
+}
+
+// persistRankingsV2 把 entries 写入 event_rankings_v2，先清空旧数据再批量插入。
+func persistRankingsV2(db *sql.DB, eventID int64, entries []RankEntry) error {
+	if _, err := db.Exec(`DELETE FROM event_rankings_v2 WHERE event_id=?`, eventID); err != nil {
+		return err
+	}
 	now := time.Now().Format(time.RFC3339)
 	for _, e := range entries {
-		db.Exec(`
+		tagsJSON := "[]"
+		if len(e.Tags) > 0 {
+			if buf, err := json.Marshal(e.Tags); err == nil {
+				tagsJSON = string(buf)
+			}
+		}
+		primaryLabel, primaryColor := "", ""
+		if e.PrimaryTitle != nil {
+			primaryLabel = e.PrimaryTitle.Label
+			primaryColor = e.PrimaryTitle.Color
+		}
+		_, err := db.Exec(`
 			INSERT INTO event_rankings_v2 (
 				event_id, reg_id, game_name, event_matches, matches, missed_matches, attendance_rate,
-				kills, deaths, assists, total_damage, telemetry_damage, telemetry_matches,
+				kills, deaths, assists, dbnos, revives, headshot_kills, top10_count,
+				total_damage, telemetry_damage, telemetry_matches,
 				damage_taken, fire_count, trade_ratio, hit_efficiency, time_alive,
-				score, rank_no, rank_label, refreshed_at
-			) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+				score, combat_score, efficiency_score, survival_score, team_score,
+				primary_title_label, primary_title_color, tags_json, comment, confidence, analysis_status,
+				rank_no, rank_label, refreshed_at
+			) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(event_id, reg_id) DO UPDATE SET
 				game_name=excluded.game_name,
 				event_matches=excluded.event_matches,
@@ -749,6 +818,10 @@ func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, e
 				kills=excluded.kills,
 				deaths=excluded.deaths,
 				assists=excluded.assists,
+				dbnos=excluded.dbnos,
+				revives=excluded.revives,
+				headshot_kills=excluded.headshot_kills,
+				top10_count=excluded.top10_count,
 				total_damage=excluded.total_damage,
 				telemetry_damage=excluded.telemetry_damage,
 				telemetry_matches=excluded.telemetry_matches,
@@ -758,13 +831,33 @@ func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, e
 				hit_efficiency=excluded.hit_efficiency,
 				time_alive=excluded.time_alive,
 				score=excluded.score,
+				combat_score=excluded.combat_score,
+				efficiency_score=excluded.efficiency_score,
+				survival_score=excluded.survival_score,
+				team_score=excluded.team_score,
+				primary_title_label=excluded.primary_title_label,
+				primary_title_color=excluded.primary_title_color,
+				tags_json=excluded.tags_json,
+				comment=excluded.comment,
+				confidence=excluded.confidence,
+				analysis_status=excluded.analysis_status,
 				rank_no=excluded.rank_no,
 				rank_label=excluded.rank_label,
 				refreshed_at=excluded.refreshed_at
-		`, eventID, e.RegID, e.GameName, e.EventMatches, e.Matches, e.MissedMatches, e.AttendanceRate, e.Kills, e.Deaths, e.Assists, e.TotalDamage, e.TelemetryDamage, e.TelemetryMatches, e.DamageTaken, e.FireCount, e.TradeRatio, e.HitEfficiency, e.TimeAlive, e.Score, e.RankNo, e.RankLabel, now)
+		`,
+			eventID, e.RegID, e.GameName, e.EventMatches, e.Matches, e.MissedMatches, e.AttendanceRate,
+			e.Kills, e.Deaths, e.Assists, e.DBNOs, e.Revives, e.HeadshotKills, e.Top10Count,
+			e.TotalDamage, e.TelemetryDamage, e.TelemetryMatches,
+			e.DamageTaken, e.FireCount, e.TradeRatio, e.HitEfficiency, e.TimeAlive,
+			e.Score, e.CombatScore, e.EfficiencyScore, e.SurvivalScore, e.TeamScore,
+			primaryLabel, primaryColor, tagsJSON, e.Comment, e.Confidence, e.AnalysisStatus,
+			e.RankNo, e.RankLabel, now,
+		)
+		if err != nil {
+			return err
+		}
 	}
-
-	return entries, nil
+	return nil
 }
 
 // ─── Public Stats (前台战绩查询) ──────────────────────────────────────────────
@@ -1137,9 +1230,15 @@ func (c *PUBGClient) GetMatchDetail(matchID, playerName string) (*MatchDetail, e
 func GetEventRankings(db *sql.DB, eventID int64) ([]RankEntry, error) {
 	v2Rows, err := db.Query(`
 		SELECT reg_id, game_name, event_matches, matches, missed_matches, attendance_rate,
-		       kills, deaths, assists, total_damage, telemetry_damage, telemetry_matches,
+		       kills, deaths, assists,
+		       COALESCE(dbnos,0), COALESCE(revives,0), COALESCE(headshot_kills,0), COALESCE(top10_count,0),
+		       total_damage, telemetry_damage, telemetry_matches,
 		       damage_taken, fire_count, trade_ratio, hit_efficiency,
-		       COALESCE(time_alive,0), score, rank_no, COALESCE(rank_label,'')
+		       COALESCE(time_alive,0),
+		       score, COALESCE(combat_score,0), COALESCE(efficiency_score,0), COALESCE(survival_score,0), COALESCE(team_score,0),
+		       COALESCE(primary_title_label,''), COALESCE(primary_title_color,''),
+		       COALESCE(tags_json,''), COALESCE(comment,''), COALESCE(confidence,''), COALESCE(analysis_status,''),
+		       rank_no, COALESCE(rank_label,'')
 		FROM event_rankings_v2 WHERE event_id=? ORDER BY rank_no ASC
 	`, eventID)
 	if err == nil {
@@ -1147,7 +1246,19 @@ func GetEventRankings(db *sql.DB, eventID int64) ([]RankEntry, error) {
 		var entries []RankEntry
 		for v2Rows.Next() {
 			var e RankEntry
-			if err := v2Rows.Scan(&e.RegID, &e.GameName, &e.EventMatches, &e.Matches, &e.MissedMatches, &e.AttendanceRate, &e.Kills, &e.Deaths, &e.Assists, &e.TotalDamage, &e.TelemetryDamage, &e.TelemetryMatches, &e.DamageTaken, &e.FireCount, &e.TradeRatio, &e.HitEfficiency, &e.TimeAlive, &e.Score, &e.RankNo, &e.RankLabel); err == nil {
+			var primaryLabel, primaryColor, tagsJSON string
+			if err := v2Rows.Scan(
+				&e.RegID, &e.GameName, &e.EventMatches, &e.Matches, &e.MissedMatches, &e.AttendanceRate,
+				&e.Kills, &e.Deaths, &e.Assists,
+				&e.DBNOs, &e.Revives, &e.HeadshotKills, &e.Top10Count,
+				&e.TotalDamage, &e.TelemetryDamage, &e.TelemetryMatches,
+				&e.DamageTaken, &e.FireCount, &e.TradeRatio, &e.HitEfficiency,
+				&e.TimeAlive,
+				&e.Score, &e.CombatScore, &e.EfficiencyScore, &e.SurvivalScore, &e.TeamScore,
+				&primaryLabel, &primaryColor,
+				&tagsJSON, &e.Comment, &e.Confidence, &e.AnalysisStatus,
+				&e.RankNo, &e.RankLabel,
+			); err == nil {
 				e.AnalysisVersion = "v2"
 				if e.Matches > 0 {
 					e.AvgDamage = e.TotalDamage / float64(e.Matches)
@@ -1156,6 +1267,12 @@ func GetEventRankings(db *sql.DB, eventID int64) ([]RankEntry, error) {
 				}
 				if e.TelemetryMatches > 0 {
 					e.AvgDamageTaken = e.DamageTaken / float64(e.TelemetryMatches)
+				}
+				if primaryLabel != "" {
+					e.PrimaryTitle = &RankTag{Label: primaryLabel, Color: primaryColor}
+				}
+				if tagsJSON != "" && tagsJSON != "[]" {
+					_ = json.Unmarshal([]byte(tagsJSON), &e.Tags)
 				}
 				entries = append(entries, e)
 			}

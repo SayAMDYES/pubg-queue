@@ -6,6 +6,7 @@ import {
   getEventDetail, registerEvent, leaveEvent, userLogout, getPlayerStats, getMatchDetail, getSeasons,
   type EventDetailData, type RegisterResult, type LeaveResult, type PlayerStatsOverview, type MatchDetail, type SeasonInfo, type RankEntry,
 } from '../api';
+import { resolveRankTags, confidenceLabel, confidenceColor, analysisStatusLabel } from '../rankingTags';
 
 export default function EventDetailPage() {
   const { date } = useParams<{ date: string }>();
@@ -407,61 +408,6 @@ export default function EventDetailPage() {
 
         {/* Rankings — 已结束且有战绩数据时显示 */}
         {ev.ended && rankings && rankings.length > 0 && (() => {
-          type TagDef = { label: string; color: string };
-          const computeTags = (r: RankEntry, all: RankEntry[]): TagDef[] => {
-            const active = all.filter(x => x.Matches > 0);
-            if (active.length === 0) return [];
-            const mean = (fn: (x: RankEntry) => number): number => {
-              const vals = active.map(fn).filter(v => v > 0);
-              return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-            };
-            const avgADR = mean(x => x.AvgDamage);
-            const avgKPG = mean(x => x.KPG || 0);
-            const avgKDA = mean(x => x.KDA || 0);
-            const avgDmgTaken = mean(x => x.AvgDamageTaken || 0);
-            const avgTradeRatio = mean(x => x.TradeRatio || 0);
-            const avgTimePerMatch = mean(x => x.Matches > 0 ? x.TimeAlive / x.Matches : 0);
-            const avgFirePerMatch = mean(x => x.TelemetryMatches > 0 ? x.FireCount / x.TelemetryMatches : 0);
-            const avgHitEff = mean(x => x.HitEfficiency || 0);
-            const avgDeathsPerMatch = mean(x => x.Matches > 0 ? x.Deaths / x.Matches : 0);
-
-            const hasTel = r.TelemetryMatches > 0;
-            const adr = r.AvgDamage;
-            const kpg = r.KPG || 0;
-            const kda = r.KDA || 0;
-            const dmgTaken = r.AvgDamageTaken || 0;
-            const trade = r.TradeRatio || 0;
-            const timePerMatch = r.Matches > 0 ? r.TimeAlive / r.Matches : 0;
-            const firePerMatch = r.TelemetryMatches > 0 ? r.FireCount / r.TelemetryMatches : 0;
-            const hitEff = r.HitEfficiency || 0;
-            const deathsPerMatch = r.Matches > 0 ? r.Deaths / r.Matches : 0;
-
-            const result: TagDef[] = [];
-            if (r.RankNo === 1) result.push({ label: '🏅 MVP', color: '#f0a500' });
-            if (avgADR > 0 && adr > avgADR * 1.2 && avgKPG > 0 && kpg > avgKPG * 1.2)
-              result.push({ label: '🔥 钢枪王', color: '#ff4d4f' });
-            if (hasTel && avgDmgTaken > 0 && dmgTaken > avgDmgTaken * 1.2 && avgADR > 0 && adr > avgADR * 1.1 && trade >= 0.85)
-              result.push({ label: '⚡ 突破手', color: '#fa8c16' });
-            if (hasTel && avgDmgTaken > 0 && dmgTaken < avgDmgTaken * 0.75 && avgTradeRatio > 0 && trade > avgTradeRatio * 1.2 && avgADR > 0 && adr >= avgADR * 0.85)
-              result.push({ label: '🎯 架枪位', color: '#722ed1' });
-            if (hasTel && avgTimePerMatch > 0 && timePerMatch > avgTimePerMatch * 1.1 && avgADR > 0 && adr >= avgADR * 0.9 && avgDeathsPerMatch > 0 && deathsPerMatch < avgDeathsPerMatch * 0.9 && trade >= 1.0)
-              result.push({ label: '🛡️ 稳健', color: '#1677ff' });
-            if (avgTimePerMatch > 0 && timePerMatch >= avgTimePerMatch * 0.85 && avgADR > 0 && adr < avgADR * 0.4) {
-              result.push({ label: '📷 战地记者', color: '#faad14' });
-            } else if (hasTel && avgTimePerMatch > 0 && timePerMatch > avgTimePerMatch * 1.1 && avgADR > 0 && adr < avgADR * 0.65 && avgDmgTaken > 0 && dmgTaken < avgDmgTaken * 0.75 && avgFirePerMatch > 0 && firePerMatch < avgFirePerMatch * 0.75) {
-              result.push({ label: '🐢 伏地老六', color: '#52c41a' });
-            } else if (!hasTel && avgTimePerMatch > 0 && timePerMatch > avgTimePerMatch * 1.1 && avgADR > 0 && adr < avgADR * 0.65) {
-              result.push({ label: '😤 怂', color: '#8c8c8c' });
-            }
-            if (hasTel && avgDmgTaken > 0 && dmgTaken > avgDmgTaken * 1.2 && avgADR > 0 && adr < avgADR * 0.8 && trade < 0.75 && avgKDA > 0 && kda < avgKDA * 0.8)
-              result.push({ label: '😵 打不过', color: '#ff7875' });
-            if (hasTel && avgFirePerMatch > 0 && firePerMatch > avgFirePerMatch * 1.2 && avgHitEff > 0 && hitEff < avgHitEff * 0.75 && avgADR > 0 && adr < avgADR * 0.8)
-              result.push({ label: '💫 夕阳红枪法', color: '#bfbfbf' });
-            if (avgTimePerMatch > 0 && timePerMatch < avgTimePerMatch * 0.65 && avgADR > 0 && adr < avgADR * 0.7 && avgKDA > 0 && kda < avgKDA * 0.7 && avgDeathsPerMatch > 0 && deathsPerMatch > avgDeathsPerMatch * 1.3)
-              result.push({ label: '📦 盒子精', color: '#8c8c8c' });
-            if (!result.some(t => !t.label.includes('MVP'))) result.push({ label: '⚖️ 均衡', color: '#13c2c2' });
-            return result;
-          };
           let maxKills = 0, maxDeaths = 0, maxAvgDamage = 0, maxAssists = 0;
           let maxKDA = 0, maxKPG = 0, maxAvgDamageTaken = 0, maxTradeRatio = 0;
           let maxHitEfficiency = 0, maxTimeAlive = 0, maxScore = 0;
@@ -483,6 +429,7 @@ export default function EventDetailPage() {
             <Tooltip title={tip}><span style={{ cursor: 'help' }}>{title} <InfoCircleOutlined style={{ fontSize: 10, opacity: 0.45 }} /></span></Tooltip>
           );
 
+          const renderScore = (v: number) => v && v > 0 ? v.toFixed(1) : '-';
           return (
             <div className="g-card" style={{ marginBottom: 16 }}>
               <div className="g-card__header">
@@ -491,12 +438,31 @@ export default function EventDetailPage() {
               </div>
               <Table
                 dataSource={rankings}
+                expandable={{
+                  rowExpandable: (record) => Boolean(record.Comment) || Boolean(record.Confidence) || Boolean(record.AnalysisStatus),
+                  expandedRowRender: (record) => (
+                    <div style={{ padding: '4px 12px', display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+                      {record.Comment && (
+                        <div><span style={{ color: 'var(--text-muted)', marginRight: 6 }}>评价：</span>{record.Comment}</div>
+                      )}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: 'var(--text-muted)' }}>
+                        {record.Confidence && (
+                          <span>置信度：<Tag color={confidenceColor[record.Confidence] || 'default'}>{confidenceLabel[record.Confidence] || record.Confidence}</Tag></span>
+                        )}
+                        {record.AnalysisStatus && (
+                          <span>分析状态：{analysisStatusLabel[record.AnalysisStatus] || record.AnalysisStatus}</span>
+                        )}
+                        <span>战斗 {renderScore(record.CombatScore)} · 效率 {renderScore(record.EfficiencyScore)} · 生存 {renderScore(record.SurvivalScore)} · 团队 {renderScore(record.TeamScore)}</span>
+                      </div>
+                    </div>
+                  ),
+                }}
                 columns={[
                   { title: '排名', dataIndex: 'RankNo', key: 'rankNo', width: 60 },
                   { title: '版本', dataIndex: 'AnalysisVersion', key: 'analysisVersion', render: (v: string) => <Tag color={v === 'v2' ? 'geekblue' : 'default'}>{(v || 'v1').toUpperCase()}</Tag> },
                   { title: '总结', dataIndex: 'RankLabel', key: 'rankLabel', render: (_: string, record: RankEntry) => (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, minWidth: 120 }}>
-                      {computeTags(record, rankings).map((t, i) => <Tag key={i} color={t.color}>{t.label}</Tag>)}
+                      {resolveRankTags(record, rankings).map((t, i) => <Tag key={i} color={t.color}>{t.label}</Tag>)}
                     </div>
                   )},
                   { title: '游戏名', dataIndex: 'GameName', key: 'gameName' },
