@@ -18,23 +18,6 @@ function formatTimeRange(start?: string, end?: string): string {
   return `${s} ~ ${e}`;
 }
 
-const rankLabelColors: Record<string, string> = {
-  '战神': '#ff4d4f',
-  '精锐': '#faad14',
-  '骨干': '#1677ff',
-  '菜鸟': '#52c41a',
-  '战犯': '#666',
-  '缺席': '#999',
-};
-
-/** 从含 emoji 的标签中提取中文关键词，兼容新旧数据 */
-function getRankKey(label: string): string {
-  for (const key of Object.keys(rankLabelColors)) {
-    if (label.includes(key)) return key;
-  }
-  return label;
-}
-
 const statusLabel: Record<string, string> = {
   assigned: '已分配',
   waitlist: '候补',
@@ -46,29 +29,95 @@ const statusColor: Record<string, string> = {
   cancelled: 'red',
 };
 
-const rankAnimations = `
-@keyframes fireGlow {
-  0%, 100% { box-shadow: 0 0 4px #ff660088, 0 0 8px #ff330044; }
-  50% { box-shadow: 0 0 8px #ff9900cc, 0 0 16px #ff660088, 0 0 24px #ff330044; }
-}
-@keyframes skullPulse {
-  0%, 100% { opacity: 0.65; }
-  50% { opacity: 1; }
-}
-@keyframes eggBob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-2px); }
-}
-.rank-tag--fire { animation: fireGlow 1.5s ease-in-out infinite; }
-.rank-tag--skull { animation: skullPulse 2s ease-in-out infinite; }
-.rank-tag--egg { animation: eggBob 1.8s ease-in-out infinite; }
-`;
+type TagDef = { label: string; color: string };
 
-const rankTagClass: Record<string, string> = {
-  '战神': 'rank-tag--fire',
-  '战犯': 'rank-tag--skull',
-  '菜鸟': 'rank-tag--egg',
-};
+/** 按队内相对战绩计算多风格标签，替代旧的称号体系 */
+function computeRankTags(record: RankEntry, all: RankEntry[]): TagDef[] {
+  const active = all.filter(r => r.Matches > 0);
+  if (active.length === 0) return [];
+
+  const mean = (fn: (r: RankEntry) => number): number => {
+    const vals = active.map(fn).filter(v => v > 0);
+    return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  };
+
+  const avgADR = mean(r => r.AvgDamage);
+  const avgKPG = mean(r => r.KPG || 0);
+  const avgKDA = mean(r => r.KDA || 0);
+  const avgDmgTaken = mean(r => r.AvgDamageTaken || 0);
+  const avgTradeRatio = mean(r => r.TradeRatio || 0);
+  const avgTimePerMatch = mean(r => r.Matches > 0 ? r.TimeAlive / r.Matches : 0);
+  const avgFirePerMatch = mean(r => r.TelemetryMatches > 0 ? r.FireCount / r.TelemetryMatches : 0);
+  const avgHitEff = mean(r => r.HitEfficiency || 0);
+  const avgDeathsPerMatch = mean(r => r.Matches > 0 ? r.Deaths / r.Matches : 0);
+
+  const hasTel = record.TelemetryMatches > 0;
+  const adr = record.AvgDamage;
+  const kpg = record.KPG || 0;
+  const kda = record.KDA || 0;
+  const dmgTaken = record.AvgDamageTaken || 0;
+  const trade = record.TradeRatio || 0;
+  const timePerMatch = record.Matches > 0 ? record.TimeAlive / record.Matches : 0;
+  const firePerMatch = record.TelemetryMatches > 0 ? record.FireCount / record.TelemetryMatches : 0;
+  const hitEff = record.HitEfficiency || 0;
+  const deathsPerMatch = record.Matches > 0 ? record.Deaths / record.Matches : 0;
+
+  const result: TagDef[] = [];
+
+  if (record.RankNo === 1) result.push({ label: '🏅 MVP', color: '#f0a500' });
+
+  // 钢枪王: ADR 和 KPG 均高于队均 20%
+  if (avgADR > 0 && adr > avgADR * 1.2 && avgKPG > 0 && kpg > avgKPG * 1.2) {
+    result.push({ label: '🔥 钢枪王', color: '#ff4d4f' });
+  }
+
+  // 突破手: 承伤高 + 输出高 + 换血基本不亏（需遥测）
+  if (hasTel && avgDmgTaken > 0 && dmgTaken > avgDmgTaken * 1.2 && avgADR > 0 && adr > avgADR * 1.1 && trade >= 0.85) {
+    result.push({ label: '⚡ 突破手', color: '#fa8c16' });
+  }
+
+  // 架枪位: 承伤低 + 换血比高 + ADR 达标（需遥测）
+  if (hasTel && avgDmgTaken > 0 && dmgTaken < avgDmgTaken * 0.75 && avgTradeRatio > 0 && trade > avgTradeRatio * 1.2 && avgADR > 0 && adr >= avgADR * 0.85) {
+    result.push({ label: '🎯 架枪位', color: '#722ed1' });
+  }
+
+  // 稳健吃鸡: 生存高 + ADR 达标 + 死亡少 + 换血赚（需遥测）
+  if (hasTel && avgTimePerMatch > 0 && timePerMatch > avgTimePerMatch * 1.1 && avgADR > 0 && adr >= avgADR * 0.9 && avgDeathsPerMatch > 0 && deathsPerMatch < avgDeathsPerMatch * 0.9 && trade >= 1.0) {
+    result.push({ label: '🛡️ 稳健', color: '#1677ff' });
+  }
+
+  // 战地记者: 活着 + ADR 极低（< 40% 队均）
+  if (avgTimePerMatch > 0 && timePerMatch >= avgTimePerMatch * 0.85 && avgADR > 0 && adr < avgADR * 0.4) {
+    result.push({ label: '📷 战地记者', color: '#faad14' });
+  // 伏地老六: 生存高 + ADR 低 + 承伤低 + 开火少（需遥测）
+  } else if (hasTel && avgTimePerMatch > 0 && timePerMatch > avgTimePerMatch * 1.1 && avgADR > 0 && adr < avgADR * 0.65 && avgDmgTaken > 0 && dmgTaken < avgDmgTaken * 0.75 && avgFirePerMatch > 0 && firePerMatch < avgFirePerMatch * 0.75) {
+    result.push({ label: '🐢 伏地老六', color: '#52c41a' });
+  // 怂: 无遥测时生存高 + ADR 低
+  } else if (!hasTel && avgTimePerMatch > 0 && timePerMatch > avgTimePerMatch * 1.1 && avgADR > 0 && adr < avgADR * 0.65) {
+    result.push({ label: '😤 怂', color: '#8c8c8c' });
+  }
+
+  // 菜/打不过: 承伤高 + 输出低 + 换血亏 + K/D 低（需遥测）
+  if (hasTel && avgDmgTaken > 0 && dmgTaken > avgDmgTaken * 1.2 && avgADR > 0 && adr < avgADR * 0.8 && trade < 0.75 && avgKDA > 0 && kda < avgKDA * 0.8) {
+    result.push({ label: '😵 打不过', color: '#ff7875' });
+  }
+
+  // 夕阳红枪法: 开火多 + 命中效低 + ADR 低（需遥测）
+  if (hasTel && avgFirePerMatch > 0 && firePerMatch > avgFirePerMatch * 1.2 && avgHitEff > 0 && hitEff < avgHitEff * 0.75 && avgADR > 0 && adr < avgADR * 0.8) {
+    result.push({ label: '💫 夕阳红枪法', color: '#bfbfbf' });
+  }
+
+  // 盒子精: 生存短 + ADR 低 + K/D 低 + 死亡多
+  if (avgTimePerMatch > 0 && timePerMatch < avgTimePerMatch * 0.65 && avgADR > 0 && adr < avgADR * 0.7 && avgKDA > 0 && kda < avgKDA * 0.7 && avgDeathsPerMatch > 0 && deathsPerMatch > avgDeathsPerMatch * 1.3) {
+    result.push({ label: '📦 盒子精', color: '#8c8c8c' });
+  }
+
+  // 均衡: 除 MVP 外没有任何风格标签
+  const hasStyle = result.some(t => !t.label.includes('MVP'));
+  if (!hasStyle) result.push({ label: '⚖️ 均衡', color: '#13c2c2' });
+
+  return result;
+}
 
 export default function AdminEventDetail() {
   const { date } = useParams<{ date: string }>();
@@ -249,18 +298,6 @@ export default function AdminEventDetail() {
   const ct = (title: string, tip: string) => (
     <Tooltip title={tip}><span style={{ cursor: 'help' }}>{title} <InfoCircleOutlined style={{ fontSize: 10, opacity: 0.45 }} /></span></Tooltip>
   );
-  const computeRankTags = (record: RankEntry) => {
-    const key = getRankKey(record.RankLabel);
-    const tags: { label: string; color: string; cls?: string }[] = [
-      { label: record.RankLabel, color: rankLabelColors[key] || '#999', cls: rankTagClass[key] },
-    ];
-    if (record.RankNo === 1) tags.push({ label: '🏅 MVP', color: '#f0a500' });
-    if (record.EventMatches > 0 && record.Matches >= record.EventMatches) tags.push({ label: '✅ 全勤', color: '#52c41a' });
-    if (record.TelemetryMatches > 0 && record.TradeRatio >= 1.0) tags.push({ label: '💰 换血赚', color: '#13c2c2' });
-    if (record.EventMatches > 0 && record.MissedMatches > record.EventMatches * 0.4) tags.push({ label: '🚫 缺席多', color: '#d9d9d9' });
-    return tags;
-  };
-
   const rankColumns = [
     { title: '排名', dataIndex: 'RankNo', key: 'rankNo', width: 60 },
     {
@@ -269,8 +306,8 @@ export default function AdminEventDetail() {
       key: 'rankLabel',
       render: (_: string, record: RankEntry) => (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, minWidth: 120 }}>
-          {computeRankTags(record).map((t, i) => (
-            <Tag key={i} color={t.color} className={t.cls}>{t.label}</Tag>
+          {computeRankTags(record, rankings || []).map((t, i) => (
+            <Tag key={i} color={t.color}>{t.label}</Tag>
           ))}
         </div>
       ),
@@ -349,7 +386,6 @@ export default function AdminEventDetail() {
 
   return (
     <div className="page-wrap">
-      <style>{rankAnimations}</style>
       <div className="page-inner page-inner--wide">
         <div className="page-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>

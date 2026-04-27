@@ -4,7 +4,7 @@ import { Form, Input, Button, Select, message, Spin, Popconfirm, Tooltip, Modal,
 import { CopyOutlined, ArrowLeftOutlined, UserAddOutlined, LogoutOutlined, UserOutlined, LoginOutlined, TrophyOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import {
   getEventDetail, registerEvent, leaveEvent, userLogout, getPlayerStats, getMatchDetail, getSeasons,
-  type EventDetailData, type RegisterResult, type LeaveResult, type PlayerStatsOverview, type MatchDetail, type SeasonInfo,
+  type EventDetailData, type RegisterResult, type LeaveResult, type PlayerStatsOverview, type MatchDetail, type SeasonInfo, type RankEntry,
 } from '../api';
 
 export default function EventDetailPage() {
@@ -407,17 +407,60 @@ export default function EventDetailPage() {
 
         {/* Rankings — 已结束且有战绩数据时显示 */}
         {ev.ended && rankings && rankings.length > 0 && (() => {
-          const rankLabelColors: Record<string, string> = { '战神': '#ff4d4f', '精锐': '#faad14', '骨干': '#1677ff', '菜鸟': '#52c41a', '战犯': '#666', '缺席': '#999' };
-          const rankTagClass: Record<string, string> = { '战神': 'rank-tag--fire', '战犯': 'rank-tag--skull', '菜鸟': 'rank-tag--egg' };
-          const getRankKey = (label: string) => Object.keys(rankLabelColors).find(k => label.includes(k)) || label;
-          const computeTags = (r: typeof rankings[number]) => {
-            const key = getRankKey(r.RankLabel);
-            const tags: { label: string; color: string; cls?: string }[] = [{ label: r.RankLabel, color: rankLabelColors[key] || '#999', cls: rankTagClass[key] }];
-            if (r.RankNo === 1) tags.push({ label: '🏅 MVP', color: '#f0a500' });
-            if (r.EventMatches > 0 && r.Matches >= r.EventMatches) tags.push({ label: '✅ 全勤', color: '#52c41a' });
-            if (r.TelemetryMatches > 0 && r.TradeRatio >= 1.0) tags.push({ label: '💰 换血赚', color: '#13c2c2' });
-            if (r.EventMatches > 0 && r.MissedMatches > r.EventMatches * 0.4) tags.push({ label: '🚫 缺席多', color: '#d9d9d9' });
-            return tags;
+          type TagDef = { label: string; color: string };
+          const computeTags = (r: RankEntry, all: RankEntry[]): TagDef[] => {
+            const active = all.filter(x => x.Matches > 0);
+            if (active.length === 0) return [];
+            const mean = (fn: (x: RankEntry) => number): number => {
+              const vals = active.map(fn).filter(v => v > 0);
+              return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+            };
+            const avgADR = mean(x => x.AvgDamage);
+            const avgKPG = mean(x => x.KPG || 0);
+            const avgKDA = mean(x => x.KDA || 0);
+            const avgDmgTaken = mean(x => x.AvgDamageTaken || 0);
+            const avgTradeRatio = mean(x => x.TradeRatio || 0);
+            const avgTimePerMatch = mean(x => x.Matches > 0 ? x.TimeAlive / x.Matches : 0);
+            const avgFirePerMatch = mean(x => x.TelemetryMatches > 0 ? x.FireCount / x.TelemetryMatches : 0);
+            const avgHitEff = mean(x => x.HitEfficiency || 0);
+            const avgDeathsPerMatch = mean(x => x.Matches > 0 ? x.Deaths / x.Matches : 0);
+
+            const hasTel = r.TelemetryMatches > 0;
+            const adr = r.AvgDamage;
+            const kpg = r.KPG || 0;
+            const kda = r.KDA || 0;
+            const dmgTaken = r.AvgDamageTaken || 0;
+            const trade = r.TradeRatio || 0;
+            const timePerMatch = r.Matches > 0 ? r.TimeAlive / r.Matches : 0;
+            const firePerMatch = r.TelemetryMatches > 0 ? r.FireCount / r.TelemetryMatches : 0;
+            const hitEff = r.HitEfficiency || 0;
+            const deathsPerMatch = r.Matches > 0 ? r.Deaths / r.Matches : 0;
+
+            const result: TagDef[] = [];
+            if (r.RankNo === 1) result.push({ label: '🏅 MVP', color: '#f0a500' });
+            if (avgADR > 0 && adr > avgADR * 1.2 && avgKPG > 0 && kpg > avgKPG * 1.2)
+              result.push({ label: '🔥 钢枪王', color: '#ff4d4f' });
+            if (hasTel && avgDmgTaken > 0 && dmgTaken > avgDmgTaken * 1.2 && avgADR > 0 && adr > avgADR * 1.1 && trade >= 0.85)
+              result.push({ label: '⚡ 突破手', color: '#fa8c16' });
+            if (hasTel && avgDmgTaken > 0 && dmgTaken < avgDmgTaken * 0.75 && avgTradeRatio > 0 && trade > avgTradeRatio * 1.2 && avgADR > 0 && adr >= avgADR * 0.85)
+              result.push({ label: '🎯 架枪位', color: '#722ed1' });
+            if (hasTel && avgTimePerMatch > 0 && timePerMatch > avgTimePerMatch * 1.1 && avgADR > 0 && adr >= avgADR * 0.9 && avgDeathsPerMatch > 0 && deathsPerMatch < avgDeathsPerMatch * 0.9 && trade >= 1.0)
+              result.push({ label: '🛡️ 稳健', color: '#1677ff' });
+            if (avgTimePerMatch > 0 && timePerMatch >= avgTimePerMatch * 0.85 && avgADR > 0 && adr < avgADR * 0.4) {
+              result.push({ label: '📷 战地记者', color: '#faad14' });
+            } else if (hasTel && avgTimePerMatch > 0 && timePerMatch > avgTimePerMatch * 1.1 && avgADR > 0 && adr < avgADR * 0.65 && avgDmgTaken > 0 && dmgTaken < avgDmgTaken * 0.75 && avgFirePerMatch > 0 && firePerMatch < avgFirePerMatch * 0.75) {
+              result.push({ label: '🐢 伏地老六', color: '#52c41a' });
+            } else if (!hasTel && avgTimePerMatch > 0 && timePerMatch > avgTimePerMatch * 1.1 && avgADR > 0 && adr < avgADR * 0.65) {
+              result.push({ label: '😤 怂', color: '#8c8c8c' });
+            }
+            if (hasTel && avgDmgTaken > 0 && dmgTaken > avgDmgTaken * 1.2 && avgADR > 0 && adr < avgADR * 0.8 && trade < 0.75 && avgKDA > 0 && kda < avgKDA * 0.8)
+              result.push({ label: '😵 打不过', color: '#ff7875' });
+            if (hasTel && avgFirePerMatch > 0 && firePerMatch > avgFirePerMatch * 1.2 && avgHitEff > 0 && hitEff < avgHitEff * 0.75 && avgADR > 0 && adr < avgADR * 0.8)
+              result.push({ label: '💫 夕阳红枪法', color: '#bfbfbf' });
+            if (avgTimePerMatch > 0 && timePerMatch < avgTimePerMatch * 0.65 && avgADR > 0 && adr < avgADR * 0.7 && avgKDA > 0 && kda < avgKDA * 0.7 && avgDeathsPerMatch > 0 && deathsPerMatch > avgDeathsPerMatch * 1.3)
+              result.push({ label: '📦 盒子精', color: '#8c8c8c' });
+            if (!result.some(t => !t.label.includes('MVP'))) result.push({ label: '⚖️ 均衡', color: '#13c2c2' });
+            return result;
           };
           let maxKills = 0, maxDeaths = 0, maxAvgDamage = 0, maxAssists = 0;
           let maxKDA = 0, maxKPG = 0, maxAvgDamageTaken = 0, maxTradeRatio = 0;
@@ -442,14 +485,6 @@ export default function EventDetailPage() {
 
           return (
             <div className="g-card" style={{ marginBottom: 16 }}>
-              <style>{`
-                @keyframes fireGlow { 0%,100%{box-shadow:0 0 4px #ff660088,0 0 8px #ff330044} 50%{box-shadow:0 0 8px #ff9900cc,0 0 16px #ff660088,0 0 24px #ff330044} }
-                @keyframes skullPulse { 0%,100%{opacity:.65} 50%{opacity:1} }
-                @keyframes eggBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-2px)} }
-                .rank-tag--fire{animation:fireGlow 1.5s ease-in-out infinite}
-                .rank-tag--skull{animation:skullPulse 2s ease-in-out infinite}
-                .rank-tag--egg{animation:eggBob 1.8s ease-in-out infinite}
-              `}</style>
               <div className="g-card__header">
                 <TrophyOutlined />
                 战绩排名
@@ -459,9 +494,9 @@ export default function EventDetailPage() {
                 columns={[
                   { title: '排名', dataIndex: 'RankNo', key: 'rankNo', width: 60 },
                   { title: '版本', dataIndex: 'AnalysisVersion', key: 'analysisVersion', render: (v: string) => <Tag color={v === 'v2' ? 'geekblue' : 'default'}>{(v || 'v1').toUpperCase()}</Tag> },
-                  { title: '总结', dataIndex: 'RankLabel', key: 'rankLabel', render: (_: string, record: typeof rankings[number]) => (
+                  { title: '总结', dataIndex: 'RankLabel', key: 'rankLabel', render: (_: string, record: RankEntry) => (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, minWidth: 120 }}>
-                      {computeTags(record).map((t, i) => <Tag key={i} color={t.color} className={t.cls}>{t.label}</Tag>)}
+                      {computeTags(record, rankings).map((t, i) => <Tag key={i} color={t.color}>{t.label}</Tag>)}
                     </div>
                   )},
                   { title: '游戏名', dataIndex: 'GameName', key: 'gameName' },
