@@ -78,53 +78,64 @@ func parseTrackedMatchStatsPayload(matchID string, payload []byte, trackedNames 
 	rosters := make([][]string, 0)
 	telemetryURL := ""
 
+	// 第一遍：建立 participantID → playerName 映射，以及受跟踪玩家的统计
 	for _, raw := range matchResp.Included {
 		var typed struct {
 			Type string `json:"type"`
-			ID   string `json:"id"`
+		}
+		if err := json.Unmarshal(raw, &typed); err != nil {
+			continue
+		}
+		if typed.Type != "participant" {
+			continue
+		}
+		var item struct {
+			ID         string `json:"id"`
+			Attributes struct {
+				Stats struct {
+					Name         string  `json:"name"`
+					Kills        int     `json:"kills"`
+					Assists      int     `json:"assists"`
+					DeathType    string  `json:"deathType"`
+					DamageDealt  float64 `json:"damageDealt"`
+					TimeSurvived float64 `json:"timeSurvived"`
+				} `json:"stats"`
+			} `json:"attributes"`
+		}
+		if err := json.Unmarshal(raw, &item); err != nil {
+			continue
+		}
+		participantNames[item.ID] = item.Attributes.Stats.Name
+		name := item.Attributes.Stats.Name
+		if _, ok := trackedNames[name]; !ok {
+			continue
+		}
+		deaths := 0
+		if item.Attributes.Stats.DeathType != "alive" {
+			deaths = 1
+		}
+		players[name] = MatchPlayerStats{
+			MatchID:   matchID,
+			CreatedAt: createdAt,
+			GameMode:  matchResp.Data.Attributes.GameMode,
+			Kills:     item.Attributes.Stats.Kills,
+			Deaths:    deaths,
+			Assists:   item.Attributes.Stats.Assists,
+			Damage:    item.Attributes.Stats.DamageDealt,
+			TimeAlive: item.Attributes.Stats.TimeSurvived,
+		}
+	}
+
+	// 第二遍：用完整的 participantNames 构建 roster 和 telemetryURL
+	for _, raw := range matchResp.Included {
+		var typed struct {
+			Type string `json:"type"`
 		}
 		if err := json.Unmarshal(raw, &typed); err != nil {
 			continue
 		}
 
 		switch typed.Type {
-		case "participant":
-			var item struct {
-				ID         string `json:"id"`
-				Attributes struct {
-					Stats struct {
-						Name         string  `json:"name"`
-						Kills        int     `json:"kills"`
-						Assists      int     `json:"assists"`
-						DeathType    string  `json:"deathType"`
-						DamageDealt  float64 `json:"damageDealt"`
-						TimeSurvived float64 `json:"timeSurvived"`
-					} `json:"stats"`
-				} `json:"attributes"`
-			}
-			if err := json.Unmarshal(raw, &item); err != nil {
-				continue
-			}
-			participantNames[item.ID] = item.Attributes.Stats.Name
-			name := item.Attributes.Stats.Name
-			if _, ok := trackedNames[name]; !ok {
-				continue
-			}
-			deaths := 0
-			if item.Attributes.Stats.DeathType != "alive" {
-				deaths = 1
-			}
-			players[name] = MatchPlayerStats{
-				MatchID:   matchID,
-				CreatedAt: createdAt,
-				GameMode:  matchResp.Data.Attributes.GameMode,
-				Kills:     item.Attributes.Stats.Kills,
-				Deaths:    deaths,
-				Assists:   item.Attributes.Stats.Assists,
-				Damage:    item.Attributes.Stats.DamageDealt,
-				TimeAlive: item.Attributes.Stats.TimeSurvived,
-			}
-
 		case "roster":
 			var item struct {
 				Relationships struct {
