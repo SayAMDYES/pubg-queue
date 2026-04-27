@@ -12,6 +12,7 @@ export interface CalendarDay {
   date: string;
   hasEvent: boolean;
   open: boolean;
+  ended: boolean;
   full: boolean;
   past: boolean;
   isToday: boolean;

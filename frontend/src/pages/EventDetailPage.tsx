@@ -227,10 +227,10 @@ export default function EventDetailPage() {
   const statusColor = ev.ended ? 'var(--text-dim)' : !ev.open ? 'var(--text-muted)' : data.registeredCount >= data.capacity ? 'var(--danger)' : 'var(--success)';
   const statusLabel = ev.ended ? '已结束' : !ev.open ? '已关闭' : data.registeredCount >= data.capacity ? '已满员' : '报名开放';
 
-  // 截止时间判断：若活动有开始时间且已过开始时间，则不允许报名/离队
+  // 截止时间判断：若活动有结束时间且已过结束时间，则不允许报名/离队
   const isPastDeadline = (() => {
-    if (!ev.startTime) return false;
-    const deadlineStr = `${ev.eventDate}T${ev.startTime}`;
+    if (!ev.endTime) return false;
+    const deadlineStr = `${ev.eventDate}T${ev.endTime}`;
     return new Date() >= new Date(deadlineStr);
   })();
 

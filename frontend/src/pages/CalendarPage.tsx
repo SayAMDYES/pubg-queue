@@ -9,7 +9,8 @@ const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 function getDayStatus(day: CalendarDay): { color: string; label: string; dotCls: string } {
   if (!day.hasEvent) return { color: 'transparent', label: '', dotCls: '' };
-  if (!day.open) return { color: 'var(--text-dim)', label: '已关闭', dotCls: 'status-dot--closed' };
+  if (day.ended) return { color: 'var(--text-dim)', label: '已结束', dotCls: 'status-dot--closed' };
+  if (!day.open) return { color: 'var(--text-muted)', label: '已关闭', dotCls: 'status-dot--closed' };
   if (day.full) return { color: 'var(--danger)', label: '已满', dotCls: 'status-dot--full' };
   return { color: 'var(--success)', label: '可报名', dotCls: 'status-dot--open' };
 }
