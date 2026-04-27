@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Table, Tag, Button, Space, message, Modal, Spin, Descriptions, Input, Popconfirm, Progress } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, DeleteOutlined, PlayCircleOutlined, StopOutlined, PlusOutlined, CloseOutlined, LoadingOutlined } from '@ant-design/icons';
-import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, adminGetRankingStatus, adminStartEvent, adminEndEvent, adminManualRegister, adminRemoveRegistration, type AdminEventDetailData, type RankingStatusData } from '../../api';
+import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, adminGetRankingStatus, adminStartEvent, adminEndEvent, adminManualRegister, adminRemoveRegistration, type AdminEventDetailData, type RankEntry, type RankingStatusData } from '../../api';
 import { formatDateTime } from '../../utils';
 
 /** 格式化时间范围，支持 HH:mm 和 YYYY-MM-DDTHH:mm 两种输入 */
@@ -253,7 +253,16 @@ export default function AdminEventDetail() {
       },
     },
     { title: '游戏名', dataIndex: 'GameName', key: 'gameName' },
-    { title: '场次', dataIndex: 'Matches', key: 'matches' },
+    {
+      title: '版本', dataIndex: 'AnalysisVersion', key: 'analysisVersion', width: 70,
+      render: (v: string) => <Tag color={v === 'v2' ? 'geekblue' : 'default'}>{(v || 'v1').toUpperCase()}</Tag>,
+    },
+    {
+      title: '出勤', dataIndex: 'Matches', key: 'attendance',
+      render: (v: number, record: RankEntry) =>
+        record.EventMatches > 0 ? `${v}/${record.EventMatches}` : `${v}`,
+    },
+    { title: '缺席', dataIndex: 'MissedMatches', key: 'missedMatches', width: 70 },
     {
       title: '击杀', dataIndex: 'Kills', key: 'kills',
       render: (v: number) => <span style={highlightIf(v, maxKills)}>{v === maxKills && v > 0 ? '🏆 ' : ''}{v}</span>,
@@ -264,10 +273,14 @@ export default function AdminEventDetail() {
     },
     { title: '助攻', dataIndex: 'Assists', key: 'assists' },
     { title: 'K/D', dataIndex: 'KDA', key: 'kda', render: (v: number) => v?.toFixed(2) || '-' },
+    { title: 'KPG', dataIndex: 'KPG', key: 'kpg', render: (v: number) => v?.toFixed(2) || '-' },
     {
       title: '场均伤害', dataIndex: 'AvgDamage', key: 'avgDamage',
       render: (v: number) => <span style={highlightIf(v, maxAvgDamage)}>{v === maxAvgDamage && v > 0 ? '🔥 ' : ''}{v?.toFixed(0) || '-'}</span>,
     },
+    { title: '场均承伤', dataIndex: 'AvgDamageTaken', key: 'avgDamageTaken', render: (v: number) => v?.toFixed(0) || '-' },
+    { title: '换血比', dataIndex: 'TradeRatio', key: 'tradeRatio', render: (v: number) => v?.toFixed(2) || '-' },
+    { title: '命中效', dataIndex: 'HitEfficiency', key: 'hitEfficiency', render: (v: number) => v?.toFixed(2) || '-' },
     {
       title: '总生存时长', dataIndex: 'TimeAlive', key: 'timeAlive',
       render: (v: number) => {
@@ -395,7 +408,7 @@ export default function AdminEventDetail() {
                 columns={rankColumns}
                 pagination={false}
                 size="small"
-                scroll={{ x: 780 }}
+                scroll={{ x: 1220 }}
                 rowKey="RankNo"
               />
             </>

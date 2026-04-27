@@ -437,17 +437,26 @@ export default function EventDetailPage() {
                 dataSource={rankings}
                 columns={[
                   { title: '排名', dataIndex: 'RankNo', key: 'rankNo', width: 60 },
+                  { title: '版本', dataIndex: 'AnalysisVersion', key: 'analysisVersion', render: (v: string) => <Tag color={v === 'v2' ? 'geekblue' : 'default'}>{(v || 'v1').toUpperCase()}</Tag> },
                   { title: '称号', dataIndex: 'RankLabel', key: 'rankLabel', render: (label: string) => {
                     const key = getRankKey(label);
                     return <Tag color={rankLabelColors[key] || '#999'} className={rankTagClass[key]}>{label}</Tag>;
                   }},
                   { title: '游戏名', dataIndex: 'GameName', key: 'gameName' },
-                  { title: '场次', dataIndex: 'Matches', key: 'matches' },
+                  {
+                    title: '出勤', dataIndex: 'Matches', key: 'attendance',
+                    render: (v: number, record: typeof rankings[number]) =>
+                      record.EventMatches > 0 ? `${v}/${record.EventMatches}` : `${v}`,
+                  },
                   { title: '击杀', dataIndex: 'Kills', key: 'kills', render: (v: number) => <span style={hl(v, maxKills)}>{v === maxKills && v > 0 ? '🏆 ' : ''}{v}</span> },
                   { title: '死亡', dataIndex: 'Deaths', key: 'deaths', render: (v: number) => <span style={hl(v, maxDeaths)}>{v === maxDeaths && v > 0 ? '💀 ' : ''}{v}</span> },
                   { title: '助攻', dataIndex: 'Assists', key: 'assists' },
                   { title: 'K/D', dataIndex: 'KDA', key: 'kda', render: (v: number) => v?.toFixed(2) || '-' },
+                  { title: 'KPG', dataIndex: 'KPG', key: 'kpg', render: (v: number) => v?.toFixed(2) || '-' },
                   { title: '场均伤害', dataIndex: 'AvgDamage', key: 'avgDamage', render: (v: number) => <span style={hl(v, maxAvgDamage)}>{v === maxAvgDamage && v > 0 ? '🔥 ' : ''}{v?.toFixed(0) || '-'}</span> },
+                  { title: '场均承伤', dataIndex: 'AvgDamageTaken', key: 'avgDamageTaken', render: (v: number) => v?.toFixed(0) || '-' },
+                  { title: '换血比', dataIndex: 'TradeRatio', key: 'tradeRatio', render: (v: number) => v?.toFixed(2) || '-' },
+                  { title: '命中效', dataIndex: 'HitEfficiency', key: 'hitEfficiency', render: (v: number) => v?.toFixed(2) || '-' },
                   { title: '总生存时长', dataIndex: 'TimeAlive', key: 'timeAlive', render: (v: number) => {
                     if (!v) return '-';
                     const m = Math.floor(v / 60);
@@ -458,7 +467,7 @@ export default function EventDetailPage() {
                 ]}
                 pagination={false}
                 size="small"
-                scroll={{ x: 780 }}
+                scroll={{ x: 1220 }}
                 rowKey="RankNo"
               />
             </div>

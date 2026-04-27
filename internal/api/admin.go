@@ -265,6 +265,11 @@ func (a *AdminAPI) ClearEvent(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "清空失败")
 		return
 	}
+	if _, err = tx.Exec(`DELETE FROM event_rankings_v2 WHERE event_id=?`, ev.ID); err != nil {
+		tx.Rollback()
+		Error(w, http.StatusInternalServerError, "清空失败")
+		return
+	}
 	_, err = tx.Exec(
 		`UPDATE registrations SET status='cancelled', cancelled_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE event_id=? AND status != 'cancelled'`,
 		ev.ID,
@@ -303,6 +308,11 @@ func (a *AdminAPI) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := tx.Exec(`DELETE FROM event_rankings WHERE event_id=?`, eventID); err != nil {
+		tx.Rollback()
+		Error(w, http.StatusInternalServerError, "删除失败")
+		return
+	}
+	if _, err := tx.Exec(`DELETE FROM event_rankings_v2 WHERE event_id=?`, eventID); err != nil {
 		tx.Rollback()
 		Error(w, http.StatusInternalServerError, "删除失败")
 		return

@@ -153,13 +153,25 @@ export const adminCreateEvent = (data: {
 export interface RankEntry {
   RegID: number;
   GameName: string;
+  AnalysisVersion: string;
+  EventMatches: number;
   Matches: number;
+  MissedMatches: number;
+  AttendanceRate: number;
   Kills: number;
   Deaths: number;
   Assists: number;
   TotalDamage: number;
+  TelemetryDamage: number;
+  TelemetryMatches: number;
+  DamageTaken: number;
+  AvgDamageTaken: number;
+  FireCount: number;
+  TradeRatio: number;
+  HitEfficiency: number;
   AvgDamage: number;
   KDA: number;
+  KPG: number;
   Score: number;
   RankNo: number;
   RankLabel: string;

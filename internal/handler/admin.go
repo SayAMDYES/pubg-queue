@@ -248,6 +248,11 @@ func (a *AdminHandlers) ClearEvent(w http.ResponseWriter, r *http.Request) {
 		renderError(w, r, http.StatusInternalServerError, "clear failed")
 		return
 	}
+	if _, err = tx.Exec(`DELETE FROM event_rankings_v2 WHERE event_id=?`, eventID); err != nil {
+		tx.Rollback()
+		renderError(w, r, http.StatusInternalServerError, "clear failed")
+		return
+	}
 	// 取消所有报名
 	_, err = tx.Exec(
 		`UPDATE registrations SET status='cancelled', cancelled_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE event_id=? AND status != 'cancelled'`,
@@ -286,6 +291,11 @@ func (a *AdminHandlers) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := tx.Exec(`DELETE FROM event_rankings WHERE event_id=?`, eventID); err != nil {
+		tx.Rollback()
+		renderError(w, r, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	if _, err := tx.Exec(`DELETE FROM event_rankings_v2 WHERE event_id=?`, eventID); err != nil {
 		tx.Rollback()
 		renderError(w, r, http.StatusInternalServerError, "delete failed")
 		return
