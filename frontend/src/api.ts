@@ -163,6 +163,7 @@ export interface RankEntry {
   Score: number;
   RankNo: number;
   RankLabel: string;
+  TimeAlive: number; // total seconds survived
 }
 
 export interface AdminEventDetailData {

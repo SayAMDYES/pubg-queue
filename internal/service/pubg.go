@@ -187,6 +187,7 @@ type MatchPlayerStats struct {
 	Deaths    int     // 1 if player died, 0 if survived
 	Assists   int
 	Damage    float64
+	TimeAlive float64 // seconds survived in this match
 }
 
 // getPlayerAccountIDAndMatches returns account ID and list of recent match IDs for a player.
@@ -244,11 +245,12 @@ func (c *PUBGClient) getMatchPlayerStats(matchID, accountID string) (*MatchPlaye
 			Type       string `json:"type"`
 			Attributes struct {
 				Stats struct {
-					PlayerID    string  `json:"playerId"`
-					Kills       int     `json:"kills"`
-					Assists     int     `json:"assists"`
-					DeathType   string  `json:"deathType"`
-					DamageDealt float64 `json:"damageDealt"`
+					PlayerID     string  `json:"playerId"`
+					Kills        int     `json:"kills"`
+					Assists      int     `json:"assists"`
+					DeathType    string  `json:"deathType"`
+					DamageDealt  float64 `json:"damageDealt"`
+					TimeSurvived float64 `json:"timeSurvived"`
 				} `json:"stats"`
 			} `json:"attributes"`
 		}
@@ -270,6 +272,7 @@ func (c *PUBGClient) getMatchPlayerStats(matchID, accountID string) (*MatchPlaye
 			Deaths:    deaths,
 			Assists:   item.Attributes.Stats.Assists,
 			Damage:    item.Attributes.Stats.DamageDealt,
+			TimeAlive: item.Attributes.Stats.TimeSurvived,
 		}, nil
 	}
 	return nil, fmt.Errorf("player not found in match %s", matchID)
@@ -285,6 +288,7 @@ type PlayerMatchRangeStats struct {
 	TotalDamage float64
 	KDA         float64
 	AvgDamage   float64
+	TimeAlive   float64 // total seconds survived across all matches in range
 }
 
 // GetPlayerMatchesInTimeRange fetches and aggregates all recent matches for a player
@@ -305,7 +309,11 @@ func (c *PUBGClient) GetPlayerMatchesInTimeRange(ctx context.Context, playerName
 		if err != nil {
 			continue
 		}
-		if ms.CreatedAt.Before(from) || ms.CreatedAt.After(to) {
+		// Matches arrive newest-first; stop as soon as we go before our window.
+		if ms.CreatedAt.Before(from) {
+			break
+		}
+		if ms.CreatedAt.After(to) {
 			continue
 		}
 		result.MatchCount++
@@ -313,6 +321,7 @@ func (c *PUBGClient) GetPlayerMatchesInTimeRange(ctx context.Context, playerName
 		result.Deaths += ms.Deaths
 		result.Assists += ms.Assists
 		result.TotalDamage += ms.Damage
+		result.TimeAlive += ms.TimeAlive
 	}
 	if result.MatchCount > 0 {
 		result.KDA = float64(result.Kills) / float64(result.MatchCount)
@@ -388,6 +397,7 @@ type RankEntry struct {
 	Score       float64
 	RankNo      int
 	RankLabel   string
+	TimeAlive   float64 // total seconds survived (summed across all event matches)
 }
 
 // CalcScore computes a composite score: KD * 15 + avgDamage * 0.05.
@@ -500,6 +510,7 @@ func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, e
 			AvgDamage:   rangeStats.AvgDamage,
 			KDA:         rangeStats.KDA,
 			Score:       score,
+			TimeAlive:   rangeStats.TimeAlive,
 		})
 	}
 
@@ -527,15 +538,16 @@ func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, e
 	now := time.Now().Format(time.RFC3339)
 	for _, e := range entries {
 		db.Exec(`
-			INSERT INTO event_rankings (event_id, reg_id, game_name, matches, kills, deaths, assists, total_damage, score, rank_no, rank_label, refreshed_at)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+			INSERT INTO event_rankings (event_id, reg_id, game_name, matches, kills, deaths, assists, total_damage, time_alive, score, rank_no, rank_label, refreshed_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(event_id, reg_id) DO UPDATE SET
 				game_name=excluded.game_name, matches=excluded.matches,
 				kills=excluded.kills, deaths=excluded.deaths,
 				assists=excluded.assists, total_damage=excluded.total_damage,
+				time_alive=excluded.time_alive,
 				score=excluded.score, rank_no=excluded.rank_no,
 				rank_label=excluded.rank_label, refreshed_at=excluded.refreshed_at
-		`, eventID, e.RegID, e.GameName, e.Matches, e.Kills, e.Deaths, e.Assists, e.TotalDamage, e.Score, e.RankNo, e.RankLabel, now)
+		`, eventID, e.RegID, e.GameName, e.Matches, e.Kills, e.Deaths, e.Assists, e.TotalDamage, e.TimeAlive, e.Score, e.RankNo, e.RankLabel, now)
 	}
 
 	return entries, nil
@@ -910,7 +922,7 @@ func (c *PUBGClient) GetMatchDetail(matchID, playerName string) (*MatchDetail, e
 // GetEventRankings reads cached rankings from the DB.
 func GetEventRankings(db *sql.DB, eventID int64) ([]RankEntry, error) {
 	rows, err := db.Query(`
-		SELECT reg_id, game_name, matches, kills, deaths, assists, total_damage, score, rank_no, COALESCE(rank_label,'')
+		SELECT reg_id, game_name, matches, kills, deaths, assists, total_damage, COALESCE(time_alive,0), score, rank_no, COALESCE(rank_label,'')
 		FROM event_rankings WHERE event_id=? ORDER BY rank_no ASC
 	`, eventID)
 	if err != nil {
@@ -920,7 +932,7 @@ func GetEventRankings(db *sql.DB, eventID int64) ([]RankEntry, error) {
 	var entries []RankEntry
 	for rows.Next() {
 		var e RankEntry
-		if err := rows.Scan(&e.RegID, &e.GameName, &e.Matches, &e.Kills, &e.Deaths, &e.Assists, &e.TotalDamage, &e.Score, &e.RankNo, &e.RankLabel); err == nil {
+		if err := rows.Scan(&e.RegID, &e.GameName, &e.Matches, &e.Kills, &e.Deaths, &e.Assists, &e.TotalDamage, &e.TimeAlive, &e.Score, &e.RankNo, &e.RankLabel); err == nil {
 			if e.Matches > 0 {
 				e.AvgDamage = e.TotalDamage / float64(e.Matches)
 				e.KDA = float64(e.Kills) / float64(e.Matches)

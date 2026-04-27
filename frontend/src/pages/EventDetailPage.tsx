@@ -448,6 +448,12 @@ export default function EventDetailPage() {
                   { title: '助攻', dataIndex: 'Assists', key: 'assists' },
                   { title: 'K/D', dataIndex: 'KDA', key: 'kda', render: (v: number) => v?.toFixed(2) || '-' },
                   { title: '场均伤害', dataIndex: 'AvgDamage', key: 'avgDamage', render: (v: number) => <span style={hl(v, maxAvgDamage)}>{v === maxAvgDamage && v > 0 ? '🔥 ' : ''}{v?.toFixed(0) || '-'}</span> },
+                  { title: '总生存时长', dataIndex: 'TimeAlive', key: 'timeAlive', render: (v: number) => {
+                    if (!v) return '-';
+                    const m = Math.floor(v / 60);
+                    const s = Math.floor(v % 60);
+                    return `${m}分${String(s).padStart(2, '0')}秒`;
+                  }},
                   { title: '评分', dataIndex: 'Score', key: 'score', render: (v: number) => v?.toFixed(1) || '-' },
                 ]}
                 pagination={false}

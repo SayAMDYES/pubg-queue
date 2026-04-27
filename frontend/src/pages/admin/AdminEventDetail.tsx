@@ -268,6 +268,15 @@ export default function AdminEventDetail() {
       title: '场均伤害', dataIndex: 'AvgDamage', key: 'avgDamage',
       render: (v: number) => <span style={highlightIf(v, maxAvgDamage)}>{v === maxAvgDamage && v > 0 ? '🔥 ' : ''}{v?.toFixed(0) || '-'}</span>,
     },
+    {
+      title: '总生存时长', dataIndex: 'TimeAlive', key: 'timeAlive',
+      render: (v: number) => {
+        if (!v) return '-';
+        const m = Math.floor(v / 60);
+        const s = Math.floor(v % 60);
+        return `${m}分${String(s).padStart(2, '0')}秒`;
+      },
+    },
     { title: '评分', dataIndex: 'Score', key: 'score', render: (v: number) => v?.toFixed(1) || '-' },
   ];
 
@@ -304,8 +313,8 @@ export default function AdminEventDetail() {
         <Space wrap style={{ marginBottom: 20 }}>
           <Button icon={<DownloadOutlined />} onClick={() => window.open(`/api/admin/events/${date}/export`, '_blank')}>导出 CSV</Button>
           <Button onClick={() => navigate(`/admin/events/${date}/edit`)}>编辑活动</Button>
-          <Button icon={<PlayCircleOutlined />} onClick={handleStart}>记录开始时间</Button>
-          <Button icon={<StopOutlined />} onClick={handleEnd}>记录结束时间</Button>
+          {!ev.actualStart && <Button icon={<PlayCircleOutlined />} onClick={handleStart}>记录开始时间</Button>}
+          {!ev.actualEnd && <Button icon={<StopOutlined />} onClick={handleEnd}>记录结束时间</Button>}
           {pubgEnabled && (
             <Button
               icon={rankingCalc.status === 'calculating' ? <LoadingOutlined /> : <ReloadOutlined />}
