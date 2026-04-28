@@ -16,6 +16,7 @@ type RankingMaxima = {
   kpg: number;
   avgDamage: number;
   avgDamageTaken: number;
+  avgTimeAlive: number;
   tradeRatio: number;
   hitEfficiency: number;
   timeAlive: number;
@@ -50,6 +51,13 @@ const formatDuration = (value: number | null | undefined): string => {
   return `${minutes}分${String(seconds).padStart(2, '0')}秒`;
 };
 
+const getAverageTimeAlive = (record: RankEntry): number => {
+  if (!hasNumber(record.TimeAlive) || !hasNumber(record.Matches) || record.Matches <= 0) {
+    return 0;
+  }
+  return record.TimeAlive / record.Matches;
+};
+
 const buildMaxima = (rankings: RankEntry[]): RankingMaxima => {
   const maxima: RankingMaxima = {
     kills: 0,
@@ -59,6 +67,7 @@ const buildMaxima = (rankings: RankEntry[]): RankingMaxima => {
     kpg: 0,
     avgDamage: 0,
     avgDamageTaken: 0,
+    avgTimeAlive: 0,
     tradeRatio: 0,
     hitEfficiency: 0,
     timeAlive: 0,
@@ -73,6 +82,7 @@ const buildMaxima = (rankings: RankEntry[]): RankingMaxima => {
     if ((record.KPG || 0) > maxima.kpg) maxima.kpg = record.KPG || 0;
     if (record.AvgDamage > maxima.avgDamage) maxima.avgDamage = record.AvgDamage;
     if ((record.AvgDamageTaken || 0) > maxima.avgDamageTaken) maxima.avgDamageTaken = record.AvgDamageTaken || 0;
+    if (getAverageTimeAlive(record) > maxima.avgTimeAlive) maxima.avgTimeAlive = getAverageTimeAlive(record);
     if ((record.TradeRatio || 0) > maxima.tradeRatio) maxima.tradeRatio = record.TradeRatio || 0;
     if ((record.HitEfficiency || 0) > maxima.hitEfficiency) maxima.hitEfficiency = record.HitEfficiency || 0;
     if ((record.TimeAlive || 0) > maxima.timeAlive) maxima.timeAlive = record.TimeAlive || 0;
@@ -100,7 +110,7 @@ const detailCardStyle = (highlighted: boolean) => ({
 });
 
 const metricTips = {
-  matches: { label: '场次', tip: '本场活动该玩家实际出勤的局数' },
+  matches: { label: '场次', tip: '本场活动该玩家实际参与的局数' },
   kills: { label: '击杀', tip: '活动期间总击杀数' },
   deaths: { label: '死亡', tip: '活动期间总死亡次数（deathType ≠ alive）' },
   assists: { label: '助攻', tip: '活动期间总助攻数' },
@@ -109,12 +119,13 @@ const metricTips = {
   headshots: { label: '爆头', tip: '活动期间总爆头击杀数' },
   top10: { label: '前十次数', tip: '活动期间进入前十的场次数' },
   kda: { label: 'K/D', tip: '击杀数 ÷ 死亡数，衡量对枪正向收益' },
-  kpg: { label: 'KPG', tip: '击杀数 ÷ 出勤场次，场均击杀效率' },
-  avgDamage: { label: '场均伤害', tip: '总造成伤害 ÷ 出勤场次（ADR）' },
-  avgDamageTaken: { label: '场均承伤', tip: '承受伤害 ÷ 出勤场次，反映被攻击压力，来自遥测数据' },
+  kpg: { label: 'KPG', tip: '击杀数 ÷ 参与场次，场均击杀效率' },
+  avgDamage: { label: '场均伤害', tip: '总造成伤害 ÷ 参与场次（ADR）' },
+  avgDamageTaken: { label: '场均承伤', tip: '承受伤害 ÷ 参与场次，反映被攻击压力，来自遥测数据' },
   tradeRatio: { label: '换血比', tip: '造成伤害 ÷ 承受伤害，≥1 表示对枪不亏，来自遥测数据' },
   hitEfficiency: { label: '命中效', tip: '伤害产出 ÷ 开火次数，衡量每次开火收益，来自遥测数据' },
-  timeAlive: { label: '总生存时长', tip: '活动期间所有出勤场次的生存时间总和' },
+  avgTimeAlive: { label: '平均生存时长', tip: '总生存时长 ÷ 参与场次，反映单局平均存活时间' },
+  timeAlive: { label: '总生存时长', tip: '活动期间所有参与场次的生存时间总和' },
   totalDamage: { label: '总伤害', tip: '活动期间累计造成的总伤害' },
   totalDamageTaken: { label: '总承伤', tip: '活动期间累计承受的总伤害' },
   combatScore: { label: '战斗评分', tip: '基于 ADR、KPG、K/D、DBNO 和爆头表现计算的战斗分' },
@@ -122,7 +133,6 @@ const metricTips = {
   survivalScore: { label: '生存评分', tip: '基于生存时间、前十率和死亡率反向计算的生存分' },
   teamScore: { label: '团队评分', tip: '基于助攻、拉人、伤害和击倒等团队贡献计算的团队分' },
   eventMatches: { label: '活动总场次', tip: '本次活动被判定为有效样本的总局数' },
-  missedMatches: { label: '缺席场次', tip: '活动总场次减去个人实际出勤后的缺席局数' },
 } satisfies Record<string, MetricDef>;
 
 export default function CompactRankingTable({ rankings, size = 'small' }: CompactRankingTableProps) {
@@ -190,7 +200,7 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
           },
         },
         {
-          title: titleWithTip('核心指标', '默认只展示出勤、击杀、K/D、KPG 和场均伤害，点击行可展开查看其余指标'),
+          title: titleWithTip('核心指标', '默认只展示参与场次、击杀、K/D、KPG 和场均伤害，点击行可展开查看其余指标'),
           key: 'coreMetrics',
           render: (_: unknown, record: RankEntry) => (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -234,6 +244,7 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
               {renderDetailMetric(metricTips.avgDamageTaken, formatFixed(record.AvgDamageTaken, 0), (record.AvgDamageTaken || 0) === maxima.avgDamageTaken && (record.AvgDamageTaken || 0) > 0)}
               {renderDetailMetric(metricTips.tradeRatio, formatFixed(record.TradeRatio, 2), (record.TradeRatio || 0) === maxima.tradeRatio && (record.TradeRatio || 0) > 0)}
               {renderDetailMetric(metricTips.hitEfficiency, formatFixed(record.HitEfficiency, 2), (record.HitEfficiency || 0) === maxima.hitEfficiency && (record.HitEfficiency || 0) > 0)}
+              {renderDetailMetric(metricTips.avgTimeAlive, formatDuration(getAverageTimeAlive(record)), getAverageTimeAlive(record) === maxima.avgTimeAlive && getAverageTimeAlive(record) > 0)}
               {renderDetailMetric(metricTips.timeAlive, formatDuration(record.TimeAlive), (record.TimeAlive || 0) === maxima.timeAlive && (record.TimeAlive || 0) > 0)}
               {renderDetailMetric(metricTips.totalDamage, formatFixed(record.TotalDamage, 0))}
               {renderDetailMetric(metricTips.totalDamageTaken, formatFixed(record.DamageTaken, 0))}
@@ -242,7 +253,6 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
               {renderDetailMetric(metricTips.survivalScore, formatFixed(record.SurvivalScore, 1))}
               {renderDetailMetric(metricTips.teamScore, formatFixed(record.TeamScore, 1))}
               {renderDetailMetric(metricTips.eventMatches, formatCount(record.EventMatches))}
-              {renderDetailMetric(metricTips.missedMatches, formatCount(record.MissedMatches))}
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
