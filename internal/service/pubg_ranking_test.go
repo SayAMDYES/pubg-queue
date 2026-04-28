@@ -1,6 +1,7 @@
 package service
 
 import (
+	"math"
 	"testing"
 )
 
@@ -39,6 +40,36 @@ func sampleEntries() []RankEntry {
 			Kills: 3, Deaths: 10, Assists: 1, DBNOs: 1, HeadshotKills: 0, Top10Count: 1,
 			TotalDamage: 400, TimeAlive: 3000,
 			TelemetryMatches: 10, TelemetryDamage: 400, DamageTaken: 1700, FireCount: 600,
+		},
+	}
+}
+
+// 复现真实 4 人活动中“第一名 80+、后面都在 30 左右”的断层场景。
+func smallLobbyCliffEntries() []RankEntry {
+	return []RankEntry{
+		{
+			RegID: 1, GameName: "1A6c", Matches: 13, EventMatches: 13,
+			Kills: 20, Deaths: 13, Assists: 8, DBNOs: 19, Revives: 3, HeadshotKills: 4, Top10Count: 4,
+			TotalDamage: 2594.5384359999993, TimeAlive: 8229,
+			TelemetryMatches: 13, TelemetryDamage: 2620.506456, DamageTaken: 2839.152038663629, FireCount: 2400,
+		},
+		{
+			RegID: 2, GameName: "Jesus331", Matches: 13, EventMatches: 13,
+			Kills: 16, Deaths: 13, Assists: 4, DBNOs: 16, Revives: 2, HeadshotKills: 3, Top10Count: 4,
+			TotalDamage: 2112.95396, TimeAlive: 7470,
+			TelemetryMatches: 13, TelemetryDamage: 2116.892186, DamageTaken: 2374.727547198539, FireCount: 3150,
+		},
+		{
+			RegID: 3, GameName: "AMD__________YES", Matches: 13, EventMatches: 13,
+			Kills: 13, Deaths: 13, Assists: 7, DBNOs: 15, Revives: 3, HeadshotKills: 4, Top10Count: 4,
+			TotalDamage: 2032.194595999997, TimeAlive: 7716,
+			TelemetryMatches: 13, TelemetryDamage: 2358.021509, DamageTaken: 2626.748614743357, FireCount: 2630,
+		},
+		{
+			RegID: 4, GameName: "theming-0315", Matches: 13, EventMatches: 13,
+			Kills: 14, Deaths: 13, Assists: 5, DBNOs: 13, Revives: 11, HeadshotKills: 5, Top10Count: 4,
+			TotalDamage: 1651.48402300001, TimeAlive: 8611,
+			TelemetryMatches: 13, TelemetryDamage: 1701.5794460812018, DamageTaken: 2747.87522593141, FireCount: 2210,
 		},
 	}
 }
@@ -101,6 +132,106 @@ func TestFinalizeRankings_AssignsTagsAndScores(t *testing.T) {
 	// Box 应该综合分最低。
 	if byName["Box"].RankNo != 4 {
 		t.Errorf("expected Box at rank 4, got rank %d", byName["Box"].RankNo)
+	}
+}
+
+func TestFinalizeRankings_CompressesSmallLobbyScoreCliff(t *testing.T) {
+	entries := smallLobbyCliffEntries()
+	FinalizeRankings(entries, "full_ready")
+
+	if entries[0].GameName != "1A6c" {
+		t.Fatalf("expected 1A6c to remain rank 1, got %s", entries[0].GameName)
+	}
+
+	gap12 := entries[0].Score - entries[1].Score
+	if gap12 >= 35 {
+		t.Fatalf("expected top-two score gap to be compressed below 35, got %.2f", gap12)
+	}
+
+	if entries[1].Score < 40 {
+		t.Fatalf("expected middle tier to avoid collapsing into the 30-point range, got %.2f", entries[1].Score)
+	}
+
+	gap23 := math.Abs(entries[1].Score - entries[2].Score)
+	if gap23 >= 10 {
+		t.Fatalf("expected second and third place to stay relatively close, got %.2f", gap23)
+	}
+
+	if entries[0].Score <= entries[1].Score {
+		t.Fatalf("expected rank 1 score to stay above rank 2: %.2f <= %.2f", entries[0].Score, entries[1].Score)
+	}
+}
+
+func TestFinalizeRankings_AssignsClearerTagsForSmallLobby(t *testing.T) {
+	entries := smallLobbyCliffEntries()
+	FinalizeRankings(entries, "full_ready")
+
+	byName := make(map[string]RankEntry, len(entries))
+	for _, e := range entries {
+		byName[e.GameName] = e
+	}
+
+	if !findTagCode(byName["1A6c"].Tags, TagAce) {
+		t.Fatalf("1A6c should keep ace tag, got %+v", byName["1A6c"].Tags)
+	}
+	if !findTagCode(byName["Jesus331"].Tags, TagBalanced) {
+		t.Fatalf("Jesus331 should remain balanced, got %+v", byName["Jesus331"].Tags)
+	}
+	if !findTagCode(byName["AMD__________YES"].Tags, TagFinisher) {
+		t.Fatalf("AMD__________YES should be tagged finisher, got %+v", byName["AMD__________YES"].Tags)
+	}
+	if findTagCode(byName["AMD__________YES"].Tags, TagBalanced) {
+		t.Fatalf("AMD__________YES should no longer fall back to balanced, got %+v", byName["AMD__________YES"].Tags)
+	}
+	if !findTagCode(byName["theming-0315"].Tags, TagMedic) {
+		t.Fatalf("theming-0315 should be tagged medic, got %+v", byName["theming-0315"].Tags)
+	}
+	if byName["theming-0315"].PrimaryTitle == nil || byName["theming-0315"].PrimaryTitle.Code != TagMedic {
+		t.Fatalf("theming-0315 primary title should be medic, got %+v", byName["theming-0315"].PrimaryTitle)
+	}
+	balancedCount := 0
+	for _, e := range entries {
+		if findTagCode(e.Tags, TagBalanced) {
+			balancedCount++
+		}
+	}
+	if balancedCount != 1 {
+		t.Fatalf("expected exactly one balanced tag in the small lobby sample, got %d", balancedCount)
+	}
+}
+
+func TestFinalizeRankings_DoesNotGrantAceInWeakLobby(t *testing.T) {
+	entries := []RankEntry{
+		{
+			RegID: 1, GameName: "WeakTop", Matches: 10, EventMatches: 10,
+			Kills: 1, Deaths: 10, Assists: 1, DBNOs: 1, Top10Count: 1,
+			TotalDamage: 420, TimeAlive: 4200,
+			TelemetryMatches: 10, TelemetryDamage: 420, DamageTaken: 1100, FireCount: 900,
+		},
+		{
+			RegID: 2, GameName: "Weak2", Matches: 10, EventMatches: 10,
+			Kills: 0, Deaths: 10, Assists: 0, DBNOs: 0, Top10Count: 1,
+			TotalDamage: 300, TimeAlive: 3900,
+			TelemetryMatches: 10, TelemetryDamage: 300, DamageTaken: 1200, FireCount: 920,
+		},
+		{
+			RegID: 3, GameName: "Weak3", Matches: 10, EventMatches: 10,
+			Kills: 0, Deaths: 10, Assists: 0, DBNOs: 0, Top10Count: 0,
+			TotalDamage: 260, TimeAlive: 3600,
+			TelemetryMatches: 10, TelemetryDamage: 260, DamageTaken: 1180, FireCount: 870,
+		},
+	}
+
+	FinalizeRankings(entries, "full_ready")
+
+	if findTagCode(entries[0].Tags, TagAce) {
+		t.Fatalf("weak lobby leader should not receive ace tag, got %+v", entries[0].Tags)
+	}
+	if findTagCode(entries[0].Tags, TagBalanced) {
+		t.Fatalf("weak lobby leader should not fall back to balanced, got %+v", entries[0].Tags)
+	}
+	if !findTagCode(entries[0].Tags, TagWeak) && !findTagCode(entries[0].Tags, TagBoxKing) {
+		t.Fatalf("weak lobby leader should fall into a negative absolute tag, got %+v", entries[0].Tags)
 	}
 }
 

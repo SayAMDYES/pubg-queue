@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Form, Input, Button, Select, message, Spin, Popconfirm, Tooltip, Modal, Row, Col, Statistic, Table, Space, Tag, Divider, Pagination, Progress, Descriptions } from 'antd';
-import { CopyOutlined, ArrowLeftOutlined, UserAddOutlined, LogoutOutlined, UserOutlined, LoginOutlined, TrophyOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { CopyOutlined, ArrowLeftOutlined, UserAddOutlined, LogoutOutlined, UserOutlined, LoginOutlined, TrophyOutlined } from '@ant-design/icons';
 import {
   getEventDetail, registerEvent, leaveEvent, userLogout, getPlayerStats, getMatchDetail, getSeasons,
-  type EventDetailData, type RegisterResult, type LeaveResult, type PlayerStatsOverview, type MatchDetail, type SeasonInfo, type RankEntry,
+  type EventDetailData, type RegisterResult, type LeaveResult, type PlayerStatsOverview, type MatchDetail, type SeasonInfo,
 } from '../api';
-import { resolveRankTags, confidenceLabel, confidenceColor, analysisStatusLabel } from '../rankingTags';
+import CompactRankingTable from '../components/CompactRankingTable';
 
 export default function EventDetailPage() {
   const { date } = useParams<{ date: string }>();
@@ -407,91 +407,15 @@ export default function EventDetailPage() {
         )}
 
         {/* Rankings — 已结束且有战绩数据时显示 */}
-        {ev.ended && rankings && rankings.length > 0 && (() => {
-          let maxKills = 0, maxDeaths = 0, maxAvgDamage = 0, maxAssists = 0;
-          let maxKDA = 0, maxKPG = 0, maxAvgDamageTaken = 0, maxTradeRatio = 0;
-          let maxHitEfficiency = 0, maxTimeAlive = 0, maxScore = 0;
-          for (const r of rankings) {
-            if (r.Kills > maxKills) maxKills = r.Kills;
-            if (r.Deaths > maxDeaths) maxDeaths = r.Deaths;
-            if (r.AvgDamage > maxAvgDamage) maxAvgDamage = r.AvgDamage;
-            if (r.Assists > maxAssists) maxAssists = r.Assists;
-            if ((r.KDA || 0) > maxKDA) maxKDA = r.KDA || 0;
-            if ((r.KPG || 0) > maxKPG) maxKPG = r.KPG || 0;
-            if ((r.AvgDamageTaken || 0) > maxAvgDamageTaken) maxAvgDamageTaken = r.AvgDamageTaken || 0;
-            if ((r.TradeRatio || 0) > maxTradeRatio) maxTradeRatio = r.TradeRatio || 0;
-            if ((r.HitEfficiency || 0) > maxHitEfficiency) maxHitEfficiency = r.HitEfficiency || 0;
-            if ((r.TimeAlive || 0) > maxTimeAlive) maxTimeAlive = r.TimeAlive || 0;
-            if ((r.Score || 0) > maxScore) maxScore = r.Score || 0;
-          }
-          const hl = (val: number, max: number) => val === max && val > 0 ? { fontWeight: 700, color: '#f0a500' } : {};
-          const ct = (title: string, tip: string) => (
-            <Tooltip title={tip}><span style={{ cursor: 'help' }}>{title} <InfoCircleOutlined style={{ fontSize: 10, opacity: 0.45 }} /></span></Tooltip>
-          );
-
-          const renderScore = (v: number) => v && v > 0 ? v.toFixed(1) : '-';
-          return (
-            <div className="g-card" style={{ marginBottom: 16 }}>
-              <div className="g-card__header">
-                <TrophyOutlined />
-                战绩排名
-              </div>
-              <Table
-                dataSource={rankings}
-                expandable={{
-                  rowExpandable: (record) => Boolean(record.Comment) || Boolean(record.Confidence) || Boolean(record.AnalysisStatus),
-                  expandedRowRender: (record) => (
-                    <div style={{ padding: '4px 12px', display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-                      {record.Comment && (
-                        <div><span style={{ color: 'var(--text-muted)', marginRight: 6 }}>评价：</span>{record.Comment}</div>
-                      )}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: 'var(--text-muted)' }}>
-                        {record.Confidence && (
-                          <span>置信度：<Tag color={confidenceColor[record.Confidence] || 'default'}>{confidenceLabel[record.Confidence] || record.Confidence}</Tag></span>
-                        )}
-                        {record.AnalysisStatus && (
-                          <span>分析状态：{analysisStatusLabel[record.AnalysisStatus] || record.AnalysisStatus}</span>
-                        )}
-                        <span>战斗 {renderScore(record.CombatScore)} · 效率 {renderScore(record.EfficiencyScore)} · 生存 {renderScore(record.SurvivalScore)} · 团队 {renderScore(record.TeamScore)}</span>
-                      </div>
-                    </div>
-                  ),
-                }}
-                columns={[
-                  { title: '排名', dataIndex: 'RankNo', key: 'rankNo', width: 60 },
-                  { title: '版本', dataIndex: 'AnalysisVersion', key: 'analysisVersion', render: (v: string) => <Tag color={v === 'v2' ? 'geekblue' : 'default'}>{(v || 'v1').toUpperCase()}</Tag> },
-                  { title: '总结', dataIndex: 'RankLabel', key: 'rankLabel', render: (_: string, record: RankEntry) => (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, minWidth: 120 }}>
-                      {resolveRankTags(record, rankings).map((t, i) => <Tag key={i} color={t.color}>{t.label}</Tag>)}
-                    </div>
-                  )},
-                  { title: '游戏名', dataIndex: 'GameName', key: 'gameName' },
-                  { title: ct('场次', '本场活动该玩家实际出勤的局数'), dataIndex: 'Matches', key: 'attendance' },
-                  { title: ct('击杀', '活动期间总击杀数'), dataIndex: 'Kills', key: 'kills', render: (v: number) => <span style={hl(v, maxKills)}>{v === maxKills && v > 0 ? '🏆 ' : ''}{v}</span> },
-                  { title: ct('死亡', '活动期间总死亡次数（deathType ≠ alive）'), dataIndex: 'Deaths', key: 'deaths', render: (v: number) => <span style={hl(v, maxDeaths)}>{v === maxDeaths && v > 0 ? '💀 ' : ''}{v}</span> },
-                  { title: ct('助攻', '活动期间总助攻数'), dataIndex: 'Assists', key: 'assists', render: (v: number) => <span style={hl(v, maxAssists)}>{v === maxAssists && v > 0 ? '🤝 ' : ''}{v}</span> },
-                  { title: ct('K/D', '击杀数 ÷ 死亡数，衡量对枪正向收益'), dataIndex: 'KDA', key: 'kda', render: (v: number) => <span style={hl(v || 0, maxKDA)}>{v === maxKDA && v > 0 ? '⚔️ ' : ''}{v?.toFixed(2) || '-'}</span> },
-                  { title: ct('KPG', '击杀数 ÷ 出勤场次，场均击杀效率'), dataIndex: 'KPG', key: 'kpg', render: (v: number) => <span style={hl(v || 0, maxKPG)}>{v === maxKPG && v > 0 ? '💥 ' : ''}{v?.toFixed(2) || '-'}</span> },
-                  { title: ct('场均伤害', '总造成伤害 ÷ 出勤场次（ADR）'), dataIndex: 'AvgDamage', key: 'avgDamage', render: (v: number) => <span style={hl(v, maxAvgDamage)}>{v === maxAvgDamage && v > 0 ? '🔥 ' : ''}{v?.toFixed(0) || '-'}</span> },
-                  { title: ct('场均承伤', '承受伤害 ÷ 出勤场次，反映被攻击压力，来自遥测数据'), dataIndex: 'AvgDamageTaken', key: 'avgDamageTaken', render: (v: number) => <span style={hl(v || 0, maxAvgDamageTaken)}>{v === maxAvgDamageTaken && v > 0 ? '🛡️ ' : ''}{v?.toFixed(0) || '-'}</span> },
-                  { title: ct('换血比', '造成伤害 ÷ 承受伤害，≥1 表示对枪不亏，来自遥测数据'), dataIndex: 'TradeRatio', key: 'tradeRatio', render: (v: number) => <span style={hl(v || 0, maxTradeRatio)}>{v === maxTradeRatio && v > 0 ? '💰 ' : ''}{v?.toFixed(2) || '-'}</span> },
-                  { title: ct('命中效', '伤害产出 ÷ 开火次数，衡量每次开火收益，来自遥测数据'), dataIndex: 'HitEfficiency', key: 'hitEfficiency', render: (v: number) => <span style={hl(v || 0, maxHitEfficiency)}>{v === maxHitEfficiency && v > 0 ? '🎯 ' : ''}{v?.toFixed(2) || '-'}</span> },
-                  { title: ct('总生存时长', '活动期间所有出勤场次的生存时间总和'), dataIndex: 'TimeAlive', key: 'timeAlive', render: (v: number) => {
-                    if (!v) return '-';
-                    const m = Math.floor(v / 60);
-                    const s = Math.floor(v % 60);
-                    return <span style={hl(v, maxTimeAlive)}>{v === maxTimeAlive && v > 0 ? '⏱️ ' : ''}{m}分{String(s).padStart(2, '0')}秒</span>;
-                  }},
-                  { title: ct('评分', '综合战斗、效率、生存指标的加权得分'), dataIndex: 'Score', key: 'score', render: (v: number) => <span style={hl(v || 0, maxScore)}>{v === maxScore && v > 0 ? '👑 ' : ''}{v?.toFixed(1) || '-'}</span> },
-                ]}
-                pagination={false}
-                size="small"
-                scroll={{ x: 1300 }}
-                rowKey="RankNo"
-              />
+        {ev.ended && rankings && rankings.length > 0 && (
+          <div className="g-card" style={{ marginBottom: 16 }}>
+            <div className="g-card__header">
+              <TrophyOutlined />
+              战绩排名
             </div>
-          );
-        })()}
+            <CompactRankingTable rankings={rankings} />
+          </div>
+        )}
 
         {/* Register */}
         {ev.open && !userRegistered && !isPastDeadline && (

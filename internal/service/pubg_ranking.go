@@ -187,6 +187,11 @@ func minMaxNorm(value, min, max float64) float64 {
 	return (value - min) / (max - min)
 }
 
+// compressedNorm 在队内 min-max 的基础上做轻度压缩，减少小样本下的断层分差。
+func compressedNorm(value, min, max float64) float64 {
+	return math.Cbrt(minMaxNorm(value, min, max))
+}
+
 // rangeOf 取队内某指标的最小最大值，用于做相对归一化。
 func rangeOf(entries []RankEntry, fn func(RankEntry) float64, requireTelemetry bool) (float64, float64) {
 	min := math.MaxFloat64
@@ -283,40 +288,38 @@ func computeSubScores(entries []RankEntry) {
 			continue
 		}
 
-		// CombatScore: ADR 30%, KPG 20%, K/D 15%, DBNO/match 15%, Headshot/match 10%, AvgDamage 10%
+		// CombatScore: ADR 30%, KPG 20%, K/D 20%, DBNO/match 20%, Headshot/match 10%
 		dbnosPM := float64(e.DBNOs) / float64(e.Matches)
 		hsPM := float64(e.HeadshotKills) / float64(e.Matches)
-		combat := 30*minMaxNorm(e.AvgDamage, adrMin, adrMax) +
-			20*minMaxNorm(e.KPG, kpgMin, kpgMax) +
-			15*minMaxNorm(e.KDA, kdaMin, kdaMax) +
-			15*minMaxNorm(dbnosPM, dbnosMin, dbnosMax) +
-			10*minMaxNorm(hsPM, hsMin, hsMax) +
-			10*minMaxNorm(e.AvgDamage, adrMin, adrMax)
+		combat := 30*compressedNorm(e.AvgDamage, adrMin, adrMax) +
+			20*compressedNorm(e.KPG, kpgMin, kpgMax) +
+			20*compressedNorm(e.KDA, kdaMin, kdaMax) +
+			20*compressedNorm(dbnosPM, dbnosMin, dbnosMax) +
+			10*compressedNorm(hsPM, hsMin, hsMax)
 		e.CombatScore = combat
 
 		// EfficiencyScore: 换血比 35%, 命中效 25%, ADR 稳定性近似（用 ADR）20%, 首次接敌效率（缺失，用 trade）20%
 		// 没有 telemetry 时退化为 ADR/KDA 的衍生值，以避免完全 0 分。
 		var efficiency float64
 		if e.TelemetryMatches > 0 {
-			efficiency = 35*minMaxNorm(e.TradeRatio, tradeMin, tradeMax) +
-				25*minMaxNorm(e.HitEfficiency, hitEffMin, hitEffMax) +
-				20*minMaxNorm(e.AvgDamage, adrMin, adrMax) +
-				20*minMaxNorm(e.KDA, kdaMin, kdaMax)
+			efficiency = 35*compressedNorm(e.TradeRatio, tradeMin, tradeMax) +
+				25*compressedNorm(e.HitEfficiency, hitEffMin, hitEffMax) +
+				20*compressedNorm(e.AvgDamage, adrMin, adrMax) +
+				20*compressedNorm(e.KDA, kdaMin, kdaMax)
 		} else {
 			// 退化：ADR + KDA 各占一半作为粗糙效率分
-			efficiency = 50*minMaxNorm(e.AvgDamage, adrMin, adrMax) +
-				50*minMaxNorm(e.KDA, kdaMin, kdaMax)
+			efficiency = 50*compressedNorm(e.AvgDamage, adrMin, adrMax) +
+				50*compressedNorm(e.KDA, kdaMin, kdaMax)
 		}
 		e.EfficiencyScore = efficiency
 
-		// SurvivalScore: 场均生存 35%, 高排名率 25%, 早死率反向 20%, 蓝圈死亡率反向（缺失） 10%, 移动合理（缺失） 10%
+		// SurvivalScore: 场均生存 45%, 高排名率 25%, 早死率反向 30%
 		survPM := e.TimeAlive / float64(e.Matches)
 		top10Rate := float64(e.Top10Count) / float64(e.Matches)
 		deathRate := float64(e.Deaths) / float64(e.Matches)
-		survival := 35*minMaxNorm(survPM, survMin, survMax) +
-			25*minMaxNorm(top10Rate, top10Min, top10Max) +
-			20*(1-minMaxNorm(deathRate, deathRateMin, deathRateMax)) +
-			20*minMaxNorm(survPM, survMin, survMax) // 用生存时间填补缺失项
+		survival := 45*compressedNorm(survPM, survMin, survMax) +
+			25*compressedNorm(top10Rate, top10Min, top10Max) +
+			30*(1-compressedNorm(deathRate, deathRateMin, deathRateMax))
 		e.SurvivalScore = survival
 
 		// TeamScore: 助攻率 25%, 拉人率 25%, 伤害占比 20%, 击倒占比 15%, 击杀参与率 15%
@@ -324,16 +327,16 @@ func computeSubScores(entries []RankEntry) {
 		assistsPM := float64(e.Assists) / float64(e.Matches)
 		revivesPM := float64(e.Revives) / float64(e.Matches)
 		// 伤害占比/击倒占比/击杀参与率 → 用相对量值近似
-		team := 25*minMaxNorm(assistsPM, assistsMin, assistsMax) +
-			25*minMaxNorm(revivesPM, revivesMin, revivesMax) +
-			20*minMaxNorm(e.AvgDamage, adrMin, adrMax) +
-			15*minMaxNorm(dbnosPM, dbnosMin, dbnosMax) +
-			15*minMaxNorm(e.KPG, kpgMin, kpgMax)
+		team := 25*compressedNorm(assistsPM, assistsMin, assistsMax) +
+			25*compressedNorm(revivesPM, revivesMin, revivesMax) +
+			20*compressedNorm(e.AvgDamage, adrMin, adrMax) +
+			15*compressedNorm(dbnosPM, dbnosMin, dbnosMax) +
+			15*compressedNorm(e.KPG, kpgMin, kpgMax)
 		e.TeamScore = team
 
-		// Score 综合分：Combat 35% + Efficiency 25% + Survival 20% + Team 15% + Stability 5%
-		// Stability 暂无样本稳定性指标，退化为 0。
-		e.Score = e.CombatScore*0.35 + e.EfficiencyScore*0.25 + e.SurvivalScore*0.20 + e.TeamScore*0.15
+		// Score 综合分：Combat 30% + Efficiency 25% + Survival 25% + Team 20%。
+		// 让团队和生存表现保留更高权重，避免小样本里输出项把差距拉得过于夸张。
+		e.Score = e.CombatScore*0.30 + e.EfficiencyScore*0.25 + e.SurvivalScore*0.25 + e.TeamScore*0.20
 	}
 }
 
@@ -403,12 +406,13 @@ func pickPrimaryTitle(tags []RankTag) *RankTag {
 	return &t
 }
 
-// buildTagsForEntry 基于队内均值给单个玩家贴标签。
+// buildTagsForEntry 基于固定阈值给单个玩家贴标签。
+// 阈值参考社区常见口径：ADR < 100 偏低，130-180 普通，180+ 输出强；K/D 1.0 左右为平均，1.2+ 稳定正收益。
 func buildTagsForEntry(e RankEntry, avg teamAverages) []RankTag {
 	if e.Matches <= 0 {
 		return nil
 	}
-	hasTel := e.TelemetryMatches > 0 && avg.hasTelemetry
+	hasTel := e.TelemetryMatches > 0
 
 	adr := e.AvgDamage
 	kpg := e.KPG
@@ -417,8 +421,10 @@ func buildTagsForEntry(e RankEntry, avg teamAverages) []RankTag {
 	trade := e.TradeRatio
 	hitEff := e.HitEfficiency
 	timePM := e.TimeAlive / float64(e.Matches)
+	top10Rate := float64(e.Top10Count) / float64(e.Matches)
 	deathPM := float64(e.Deaths) / float64(e.Matches)
 	dbnoPM := float64(e.DBNOs) / float64(e.Matches)
+	assistsPM := float64(e.Assists) / float64(e.Matches)
 	revivePM := float64(e.Revives) / float64(e.Matches)
 	firePM := 0.0
 	if e.TelemetryMatches > 0 {
@@ -427,79 +433,77 @@ func buildTagsForEntry(e RankEntry, avg teamAverages) []RankTag {
 
 	var tags []RankTag
 
-	// 钢枪王: ADR + KPG 均高于队均 20%
-	if avg.avgADR > 0 && adr > avg.avgADR*1.2 && avg.avgKPG > 0 && kpg > avg.avgKPG*1.2 {
+	// 钢枪王: 输出和收割能力都达到社区常见的强力档。
+	if adr >= 180 && kpg >= 1.2 && kda >= 1.2 {
 		tags = append(tags, makeTag(TagAce))
 	}
 
-	// 突破手: 承伤高 + 输出高 + 换血不亏 + DBNO 高（需遥测）
-	if hasTel && avg.avgDmgTaken > 0 && dmgTaken > avg.avgDmgTaken*1.2 &&
-		avg.avgADR > 0 && adr > avg.avgADR*1.1 && trade >= 0.85 &&
-		(avg.avgDBNOsPerMatch == 0 || dbnoPM >= avg.avgDBNOsPerMatch) {
+	// 突破手: 高承伤前提下仍保持足够输出和换血质量。
+	if hasTel && adr >= 180 && dmgTaken >= 200 && trade >= 0.85 && dbnoPM >= 1.1 {
 		tags = append(tags, makeTag(TagBreaker))
 	}
 
-	// 架枪位: 承伤低 + 换血比高 + ADR 达标（需遥测）
-	if hasTel && avg.avgDmgTaken > 0 && dmgTaken < avg.avgDmgTaken*0.75 &&
-		avg.avgTradeRatio > 0 && trade > avg.avgTradeRatio*1.2 &&
-		avg.avgADR > 0 && adr >= avg.avgADR*0.85 {
+	// 架枪位: 暴露少、换血效率高，且输出不拖后腿。
+	if hasTel && adr >= 150 && dmgTaken <= 170 && trade >= 1.1 {
 		tags = append(tags, makeTag(TagSniperPos))
 	}
 
-	// 稳健: 生存高 + ADR 不低于队均 90% + 死亡率低 + 换血赚（需遥测）
-	if hasTel && avg.avgTimePerMatch > 0 && timePM > avg.avgTimePerMatch*1.1 &&
-		avg.avgADR > 0 && adr >= avg.avgADR*0.9 &&
-		avg.avgDeathsPerMatch > 0 && deathPM < avg.avgDeathsPerMatch*0.9 &&
-		trade >= 1.0 {
+	// 稳健: 存活和进圈表现好，且不是纯苟分。
+	if hasTel && timePM >= 680 && top10Rate >= 0.30 && deathPM <= 0.95 && trade >= 0.95 && adr >= 140 {
 		tags = append(tags, makeTag(TagSteady))
 	}
 
-	// 医疗兵: 拉人率高于队均 30%
-	if avg.avgRevivesPerMatch > 0 && revivePM > avg.avgRevivesPerMatch*1.3 {
+	// 医疗兵: 拉人率显著高于队均，且有足够的绝对拉人数与基础协同参与。
+	if revivePM >= 0.6 && e.Revives >= 4 && assistsPM >= 0.3 {
 		tags = append(tags, makeTag(TagMedic))
 	}
 
+	// 补枪位: 助攻显著偏高，击倒不低，但本人并非主要钢枪位。
+	if assistsPM >= 0.45 && dbnoPM >= 1.0 && kpg >= 0.9 && kpg < 1.2 && adr >= 140 && adr < 190 {
+		tags = append(tags, makeTag(TagFinisher))
+	}
+
+	// 运营大师: 后期率高、存活稳定，输出中等即可。
+	if timePM >= 700 && top10Rate >= 0.35 && deathPM <= 0.95 && adr >= 120 {
+		tags = append(tags, makeTag(TagOperator))
+	}
+
 	// 战地记者: 活着 + ADR 极低
-	if avg.avgTimePerMatch > 0 && timePM >= avg.avgTimePerMatch*0.85 &&
-		avg.avgADR > 0 && adr < avg.avgADR*0.4 {
+	if timePM >= 650 && adr < 90 {
 		tags = append(tags, makeTag(TagReporter))
-	} else if hasTel && avg.avgTimePerMatch > 0 && timePM > avg.avgTimePerMatch*1.1 &&
-		avg.avgADR > 0 && adr < avg.avgADR*0.65 &&
-		avg.avgDmgTaken > 0 && dmgTaken < avg.avgDmgTaken*0.75 &&
-		avg.avgFirePerMatch > 0 && firePM < avg.avgFirePerMatch*0.75 {
+	} else if hasTel && timePM >= 700 && adr < 130 && dmgTaken < 170 && firePM < 180 {
 		// 伏地老六: 生存高 + ADR 低 + 承伤低 + 开火少（需遥测）
 		tags = append(tags, makeTag(TagCamper))
-	} else if !hasTel && avg.avgTimePerMatch > 0 && timePM > avg.avgTimePerMatch*1.1 &&
-		avg.avgADR > 0 && adr < avg.avgADR*0.65 {
+	} else if !hasTel && timePM >= 700 && adr < 130 {
 		// 怂: 无遥测时生存高 + ADR 低
 		tags = append(tags, makeTag(TagCoward))
 	}
 
-	// 菜/打不过: 承伤高 + 输出低 + 换血亏 + K/D 低（需遥测）
-	if hasTel && avg.avgDmgTaken > 0 && dmgTaken > avg.avgDmgTaken*1.2 &&
-		avg.avgADR > 0 && adr < avg.avgADR*0.8 && trade < 0.75 &&
-		avg.avgKDA > 0 && kda < avg.avgKDA*0.8 {
+	// 菜/打不过: 绝对输出和换血都偏低，而不是仅仅队内相对较差。
+	if (hasTel && adr < 110 && trade < 0.8 && kda < 0.9 && dmgTaken >= 190) ||
+		(!hasTel && adr < 90 && kda < 0.8 && kpg < 0.7) {
 		tags = append(tags, makeTag(TagWeak))
 	}
 
 	// 夕阳红枪法: 开火多 + 命中效低 + ADR 低（需遥测）
-	if hasTel && avg.avgFirePerMatch > 0 && firePM > avg.avgFirePerMatch*1.2 &&
-		avg.avgHitEff > 0 && hitEff < avg.avgHitEff*0.75 &&
-		avg.avgADR > 0 && adr < avg.avgADR*0.8 {
+	if hasTel && firePM >= 220 && hitEff < 0.75 && adr < 150 {
 		tags = append(tags, makeTag(TagDuskShooter))
 	}
 
 	// 盒子精: 生存短 + ADR 低 + K/D 低 + 死亡多
-	if avg.avgTimePerMatch > 0 && timePM < avg.avgTimePerMatch*0.65 &&
-		avg.avgADR > 0 && adr < avg.avgADR*0.7 &&
-		avg.avgKDA > 0 && kda < avg.avgKDA*0.7 &&
-		avg.avgDeathsPerMatch > 0 && deathPM > avg.avgDeathsPerMatch*1.3 {
+	if timePM < 480 && adr < 110 && kda < 0.8 && deathPM >= 1.0 {
 		tags = append(tags, makeTag(TagBoxKing))
 	}
 
-	// 均衡: 没有任何风格标签
+	// 均衡: 只给中位档玩家，不再作为所有未命中标签的默认兜底。
 	if len(tags) == 0 {
-		tags = append(tags, makeTag(TagBalanced))
+		if adr >= 130 && adr < 190 && kda >= 0.95 && kda < 1.35 && kpg >= 0.9 && kpg < 1.3 && top10Rate >= 0.25 && (!hasTel || (trade >= 0.8 && trade <= 1.05)) {
+			tags = append(tags, makeTag(TagBalanced))
+		} else if adr < 110 && kda < 0.9 {
+			tags = append(tags, makeTag(TagWeak))
+		} else {
+			tags = append(tags, makeTag(TagBalanced))
+		}
 	}
 
 	return tags
