@@ -509,8 +509,8 @@ func buildTagsForEntry(e RankEntry, avg teamAverages) []RankTag {
 	return tags
 }
 
-// composeComment 基于队内均值生成简短评价文案，参考设计稿 §16。
-func composeComment(e RankEntry, avg teamAverages) string {
+// composeComment 基于最终主称号生成评价，避免和绝对阈值标签出现语义冲突。
+func composeComment(e RankEntry, _ teamAverages) string {
 	if e.Matches <= 0 {
 		return "本次活动未出勤"
 	}
@@ -518,50 +518,65 @@ func composeComment(e RankEntry, avg teamAverages) string {
 		return "样本不足，仅展示数据，暂不下定论"
 	}
 
-	hasTel := e.TelemetryMatches > 0 && avg.hasTelemetry
-	adr := e.AvgDamage
-	kpg := e.KPG
-	dmgTaken := e.AvgDamageTaken
-	trade := e.TradeRatio
-	timePM := e.TimeAlive / float64(e.Matches)
-	deathPM := float64(e.Deaths) / float64(e.Matches)
-
-	// 优先匹配强势文案
-	if avg.avgADR > 0 && adr > avg.avgADR*1.2 && avg.avgKPG > 0 && kpg > avg.avgKPG*1.2 && (!hasTel || trade >= 1.0) {
-		return "输出和击杀都明显高于队伍均值，正面对抗能力强"
-	}
-	if hasTel && avg.avgDmgTaken > 0 && dmgTaken < avg.avgDmgTaken*0.75 &&
-		avg.avgADR > 0 && adr >= avg.avgADR*0.85 && trade >= 1.2 {
-		return "输出效率好，暴露少，适合架枪和压制"
-	}
-	if hasTel && avg.avgDmgTaken > 0 && dmgTaken > avg.avgDmgTaken*1.2 &&
-		avg.avgADR > 0 && adr > avg.avgADR*1.1 {
-		return "经常负责打开局面，承伤换输出整体不亏"
-	}
-	if avg.avgTimePerMatch > 0 && timePM > avg.avgTimePerMatch*1.1 &&
-		avg.avgADR > 0 && adr >= avg.avgADR*0.9 {
-		return "打法稳健，能活到后期，也能提供稳定输出"
+	hasTag := func(code string) bool {
+		for _, t := range e.Tags {
+			if t.Code == code {
+				return true
+			}
+		}
+		return false
 	}
 
-	// 问题文案
-	if hasTel && avg.avgDmgTaken > 0 && dmgTaken > avg.avgDmgTaken*1.2 &&
-		avg.avgADR > 0 && adr < avg.avgADR*0.8 && trade < 0.75 {
-		return "接战后换血明显吃亏，正面对抗能力偏弱"
-	}
-	if avg.avgTimePerMatch > 0 && timePM >= avg.avgTimePerMatch*0.85 &&
-		avg.avgADR > 0 && adr < avg.avgADR*0.4 {
-		return "活得久，但几乎不参与战斗，更像旁观者"
-	}
-	if avg.avgTimePerMatch > 0 && timePM < avg.avgTimePerMatch*0.65 &&
-		avg.avgADR > 0 && adr < avg.avgADR*0.7 {
-		return "容易过早阵亡，死前贡献不足"
-	}
-	if avg.avgDeathsPerMatch > 0 && deathPM > avg.avgDeathsPerMatch*1.2 &&
-		avg.avgADR > 0 && adr < avg.avgADR*0.8 {
-		return "接战意愿不低，但收益偏弱，需要提升换血质量"
+	if hasTag(TagSampleScarce) {
+		return "样本不足，仅展示数据，暂不下定论"
 	}
 
-	return "各项指标接近队伍均值，没有明显短板也没有突出项"
+	code := ""
+	if e.PrimaryTitle != nil {
+		code = e.PrimaryTitle.Code
+	}
+
+	var comment string
+	switch code {
+	case TagAce:
+		comment = "输出和收割都很强，是队伍里最稳定的正面火力点"
+	case TagBreaker:
+		comment = "经常顶在前面打开局面，承伤高但还能换回足够输出"
+	case TagSniperPos:
+		comment = "暴露控制和换血效率都不错，适合架枪和侧翼压制"
+	case TagSteady:
+		comment = "存活和进圈表现稳定，后期贡献比较可靠"
+	case TagOperator:
+		comment = "转移和后期处理都比较稳，运营价值比较明显"
+	case TagMedic:
+		comment = "拉人和协同支援贡献明显，是队伍里的救火位"
+	case TagFinisher:
+		comment = "补枪和协同收尾能力突出，适合跟枪把伤害转成淘汰"
+	case TagReporter:
+		comment = "生存不差，但战斗参与和输出明显偏低"
+	case TagCamper:
+		comment = "活得久、暴露少，但参战和开火都偏少"
+	case TagCoward:
+		comment = "生存时间不短，但参战积极性和输出都偏低"
+	case TagWeak:
+		comment = "输出、击杀和换血都偏弱，正面对抗明显吃亏"
+	case TagDuskShooter:
+		comment = "开火不少，但有效命中和伤害转化偏低"
+	case TagBoxKing:
+		comment = "容易过早阵亡，死前贡献明显不够"
+	case TagCourier:
+		comment = "正面收益和生存都比较吃亏，容易过早把资源送出去"
+	case TagBalanced:
+		comment = "没有特别突出的强项，但也不是全队最明显的短板"
+	default:
+		comment = "整体表现中规中矩，还需要更多样本再细看"
+	}
+
+	if hasTag(TagAttendance) {
+		comment += "，但出勤偏低，样本代表性有限"
+	}
+
+	return comment
 }
 
 // FinalizeRankings 在基础和遥测聚合完成后，给所有 entry 计算评分、标签和排名。

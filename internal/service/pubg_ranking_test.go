@@ -2,6 +2,7 @@ package service
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -351,5 +352,73 @@ func TestComputeConfidence(t *testing.T) {
 		if got := computeConfidence(matches); got != want {
 			t.Errorf("computeConfidence(%d)=%q, want %q", matches, got, want)
 		}
+	}
+}
+
+func TestComposeComment_DoesNotFlattenWeakPlayerToBalanced(t *testing.T) {
+	avg := teamAverages{
+		avgADR:            141.59,
+		avgKPG:            1.04,
+		avgDmgTaken:       176.94,
+		avgTradeRatio:     0.85,
+		avgTimePerMatch:   486.72,
+		avgDeathsPerMatch: 0.97,
+		hasTelemetry:      true,
+	}
+
+	entry := RankEntry{
+		GameName:         "theming-0315",
+		Matches:          34,
+		Kills:            15,
+		Deaths:           33,
+		Assists:          6,
+		Revives:          6,
+		Top10Count:       8,
+		TimeAlive:        16557,
+		AvgDamage:        65.46,
+		AvgDamageTaken:   186.74,
+		TradeRatio:       0.40,
+		TelemetryMatches: 34,
+		Tags:             []RankTag{makeTag(TagWeak)},
+		PrimaryTitle:     func() *RankTag { t := makeTag(TagWeak); return &t }(),
+	}
+
+	comment := composeComment(entry, avg)
+	if comment == "各项指标接近队伍均值，没有明显短板也没有突出项" {
+		t.Fatalf("weak player should not receive balanced fallback comment")
+	}
+	if !strings.Contains(comment, "偏弱") && !strings.Contains(comment, "吃亏") {
+		t.Fatalf("weak player comment should describe weakness, got %q", comment)
+	}
+}
+
+func TestComposeComment_DoesNotFlattenAcePlayerToBalanced(t *testing.T) {
+	avg := teamAverages{
+		avgADR:        141.59,
+		avgKPG:        1.04,
+		avgTradeRatio: 0.85,
+		hasTelemetry:  true,
+	}
+
+	entry := RankEntry{
+		GameName:         "Jesus331",
+		Matches:          19,
+		Kills:            28,
+		Deaths:           18,
+		TimeAlive:        9500,
+		AvgDamage:        183.62,
+		TradeRatio:       0.95,
+		KPG:              1.47,
+		TelemetryMatches: 19,
+		Tags:             []RankTag{makeTag(TagAce)},
+		PrimaryTitle:     func() *RankTag { t := makeTag(TagAce); return &t }(),
+	}
+
+	comment := composeComment(entry, avg)
+	if comment == "各项指标接近队伍均值，没有明显短板也没有突出项" {
+		t.Fatalf("ace player should not receive balanced fallback comment")
+	}
+	if !strings.Contains(comment, "输出") && !strings.Contains(comment, "对抗") {
+		t.Fatalf("ace player comment should describe strong output, got %q", comment)
 	}
 }

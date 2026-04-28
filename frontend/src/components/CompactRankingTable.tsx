@@ -22,6 +22,11 @@ type RankingMaxima = {
   score: number;
 };
 
+type MetricDef = {
+  label: string;
+  tip: string;
+};
+
 const titleWithTip = (title: string, tip: string) => (
   <Tooltip title={tip}>
     <span style={{ cursor: 'help' }}>
@@ -94,19 +99,54 @@ const detailCardStyle = (highlighted: boolean) => ({
   background: highlighted ? 'rgba(240, 165, 0, 0.10)' : 'var(--surface-elevated, rgba(255, 255, 255, 0.03))',
 });
 
+const metricTips = {
+  matches: { label: '场次', tip: '本场活动该玩家实际出勤的局数' },
+  kills: { label: '击杀', tip: '活动期间总击杀数' },
+  deaths: { label: '死亡', tip: '活动期间总死亡次数（deathType ≠ alive）' },
+  assists: { label: '助攻', tip: '活动期间总助攻数' },
+  dbnos: { label: '击倒', tip: '活动期间总击倒数（DBNO）' },
+  revives: { label: '扶起', tip: '活动期间总扶起队友次数' },
+  headshots: { label: '爆头', tip: '活动期间总爆头击杀数' },
+  top10: { label: '前十次数', tip: '活动期间进入前十的场次数' },
+  kda: { label: 'K/D', tip: '击杀数 ÷ 死亡数，衡量对枪正向收益' },
+  kpg: { label: 'KPG', tip: '击杀数 ÷ 出勤场次，场均击杀效率' },
+  avgDamage: { label: '场均伤害', tip: '总造成伤害 ÷ 出勤场次（ADR）' },
+  avgDamageTaken: { label: '场均承伤', tip: '承受伤害 ÷ 出勤场次，反映被攻击压力，来自遥测数据' },
+  tradeRatio: { label: '换血比', tip: '造成伤害 ÷ 承受伤害，≥1 表示对枪不亏，来自遥测数据' },
+  hitEfficiency: { label: '命中效', tip: '伤害产出 ÷ 开火次数，衡量每次开火收益，来自遥测数据' },
+  timeAlive: { label: '总生存时长', tip: '活动期间所有出勤场次的生存时间总和' },
+  totalDamage: { label: '总伤害', tip: '活动期间累计造成的总伤害' },
+  totalDamageTaken: { label: '总承伤', tip: '活动期间累计承受的总伤害' },
+  combatScore: { label: '战斗评分', tip: '基于 ADR、KPG、K/D、DBNO 和爆头表现计算的战斗分' },
+  efficiencyScore: { label: '效率评分', tip: '基于换血比、命中效、ADR 和 K/D 计算的效率分' },
+  survivalScore: { label: '生存评分', tip: '基于生存时间、前十率和死亡率反向计算的生存分' },
+  teamScore: { label: '团队评分', tip: '基于助攻、拉人、伤害和击倒等团队贡献计算的团队分' },
+  eventMatches: { label: '活动总场次', tip: '本次活动被判定为有效样本的总局数' },
+  missedMatches: { label: '缺席场次', tip: '活动总场次减去个人实际出勤后的缺席局数' },
+} satisfies Record<string, MetricDef>;
+
 export default function CompactRankingTable({ rankings, size = 'small' }: CompactRankingTableProps) {
   const maxima = buildMaxima(rankings);
 
-  const renderCoreMetric = (label: string, value: string, highlighted = false) => (
-    <span key={label} style={metricCardStyle(highlighted)}>
-      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{label}</span>
+  const renderMetricLabel = ({ label, tip }: MetricDef, fontSize: number) => (
+    <Tooltip title={tip}>
+      <span style={{ fontSize, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'help' }}>
+        {label}
+        <InfoCircleOutlined style={{ fontSize: 10, opacity: 0.45 }} />
+      </span>
+    </Tooltip>
+  );
+
+  const renderCoreMetric = (metric: MetricDef, value: string, highlighted = false) => (
+    <span key={metric.label} style={metricCardStyle(highlighted)}>
+      {renderMetricLabel(metric, 11)}
       <span style={{ fontSize: 14, fontWeight: highlighted ? 700 : 600, color: highlighted ? '#f0a500' : 'inherit' }}>{value}</span>
     </span>
   );
 
-  const renderDetailMetric = (label: string, value: string, highlighted = false) => (
-    <div key={label} style={detailCardStyle(highlighted)}>
-      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
+  const renderDetailMetric = (metric: MetricDef, value: string, highlighted = false) => (
+    <div key={metric.label} style={detailCardStyle(highlighted)}>
+      <div style={{ marginBottom: 4 }}>{renderMetricLabel(metric, 12)}</div>
       <div style={{ fontSize: 14, fontWeight: highlighted ? 700 : 600, color: highlighted ? '#f0a500' : 'inherit' }}>{value}</div>
     </div>
   );
@@ -154,11 +194,11 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
           key: 'coreMetrics',
           render: (_: unknown, record: RankEntry) => (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {renderCoreMetric('场次', formatCount(record.Matches))}
-              {renderCoreMetric('击杀', formatCount(record.Kills), record.Kills === maxima.kills && record.Kills > 0)}
-              {renderCoreMetric('K/D', formatFixed(record.KDA, 2), (record.KDA || 0) === maxima.kda && (record.KDA || 0) > 0)}
-              {renderCoreMetric('KPG', formatFixed(record.KPG, 2), (record.KPG || 0) === maxima.kpg && (record.KPG || 0) > 0)}
-              {renderCoreMetric('场均伤害', formatFixed(record.AvgDamage, 0), record.AvgDamage === maxima.avgDamage && record.AvgDamage > 0)}
+              {renderCoreMetric(metricTips.matches, formatCount(record.Matches))}
+              {renderCoreMetric(metricTips.kills, formatCount(record.Kills), record.Kills === maxima.kills && record.Kills > 0)}
+              {renderCoreMetric(metricTips.kda, formatFixed(record.KDA, 2), (record.KDA || 0) === maxima.kda && (record.KDA || 0) > 0)}
+              {renderCoreMetric(metricTips.kpg, formatFixed(record.KPG, 2), (record.KPG || 0) === maxima.kpg && (record.KPG || 0) > 0)}
+              {renderCoreMetric(metricTips.avgDamage, formatFixed(record.AvgDamage, 0), record.AvgDamage === maxima.avgDamage && record.AvgDamage > 0)}
             </div>
           ),
         },
@@ -185,24 +225,24 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
         expandedRowRender: (record) => (
           <div style={{ display: 'grid', gap: 12, padding: '8px 4px' }}>
             <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
-              {renderDetailMetric('死亡', formatCount(record.Deaths), record.Deaths === maxima.deaths && record.Deaths > 0)}
-              {renderDetailMetric('助攻', formatCount(record.Assists), record.Assists === maxima.assists && record.Assists > 0)}
-              {renderDetailMetric('击倒', formatCount(record.DBNOs))}
-              {renderDetailMetric('扶起', formatCount(record.Revives))}
-              {renderDetailMetric('爆头', formatCount(record.HeadshotKills))}
-              {renderDetailMetric('前十次数', formatCount(record.Top10Count))}
-              {renderDetailMetric('场均承伤', formatFixed(record.AvgDamageTaken, 0), (record.AvgDamageTaken || 0) === maxima.avgDamageTaken && (record.AvgDamageTaken || 0) > 0)}
-              {renderDetailMetric('换血比', formatFixed(record.TradeRatio, 2), (record.TradeRatio || 0) === maxima.tradeRatio && (record.TradeRatio || 0) > 0)}
-              {renderDetailMetric('命中效', formatFixed(record.HitEfficiency, 2), (record.HitEfficiency || 0) === maxima.hitEfficiency && (record.HitEfficiency || 0) > 0)}
-              {renderDetailMetric('总生存时长', formatDuration(record.TimeAlive), (record.TimeAlive || 0) === maxima.timeAlive && (record.TimeAlive || 0) > 0)}
-              {renderDetailMetric('总伤害', formatFixed(record.TotalDamage, 0))}
-              {renderDetailMetric('总承伤', formatFixed(record.DamageTaken, 0))}
-              {renderDetailMetric('战斗评分', formatFixed(record.CombatScore, 1))}
-              {renderDetailMetric('效率评分', formatFixed(record.EfficiencyScore, 1))}
-              {renderDetailMetric('生存评分', formatFixed(record.SurvivalScore, 1))}
-              {renderDetailMetric('团队评分', formatFixed(record.TeamScore, 1))}
-              {renderDetailMetric('活动总场次', formatCount(record.EventMatches))}
-              {renderDetailMetric('缺席场次', formatCount(record.MissedMatches))}
+              {renderDetailMetric(metricTips.deaths, formatCount(record.Deaths), record.Deaths === maxima.deaths && record.Deaths > 0)}
+              {renderDetailMetric(metricTips.assists, formatCount(record.Assists), record.Assists === maxima.assists && record.Assists > 0)}
+              {renderDetailMetric(metricTips.dbnos, formatCount(record.DBNOs))}
+              {renderDetailMetric(metricTips.revives, formatCount(record.Revives))}
+              {renderDetailMetric(metricTips.headshots, formatCount(record.HeadshotKills))}
+              {renderDetailMetric(metricTips.top10, formatCount(record.Top10Count))}
+              {renderDetailMetric(metricTips.avgDamageTaken, formatFixed(record.AvgDamageTaken, 0), (record.AvgDamageTaken || 0) === maxima.avgDamageTaken && (record.AvgDamageTaken || 0) > 0)}
+              {renderDetailMetric(metricTips.tradeRatio, formatFixed(record.TradeRatio, 2), (record.TradeRatio || 0) === maxima.tradeRatio && (record.TradeRatio || 0) > 0)}
+              {renderDetailMetric(metricTips.hitEfficiency, formatFixed(record.HitEfficiency, 2), (record.HitEfficiency || 0) === maxima.hitEfficiency && (record.HitEfficiency || 0) > 0)}
+              {renderDetailMetric(metricTips.timeAlive, formatDuration(record.TimeAlive), (record.TimeAlive || 0) === maxima.timeAlive && (record.TimeAlive || 0) > 0)}
+              {renderDetailMetric(metricTips.totalDamage, formatFixed(record.TotalDamage, 0))}
+              {renderDetailMetric(metricTips.totalDamageTaken, formatFixed(record.DamageTaken, 0))}
+              {renderDetailMetric(metricTips.combatScore, formatFixed(record.CombatScore, 1))}
+              {renderDetailMetric(metricTips.efficiencyScore, formatFixed(record.EfficiencyScore, 1))}
+              {renderDetailMetric(metricTips.survivalScore, formatFixed(record.SurvivalScore, 1))}
+              {renderDetailMetric(metricTips.teamScore, formatFixed(record.TeamScore, 1))}
+              {renderDetailMetric(metricTips.eventMatches, formatCount(record.EventMatches))}
+              {renderDetailMetric(metricTips.missedMatches, formatCount(record.MissedMatches))}
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
