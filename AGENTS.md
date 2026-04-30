@@ -22,7 +22,9 @@
   - `pubg_ranking.go` / `pubg_ranking_test.go`：4 项分数 + 多标签 + 主称号 + 评价 + 置信度。
 - `internal/middleware`：认证、限流、安全头和封禁逻辑。
 - `internal/model`：数据模型定义。
-- `frontend/src/rankingTags.ts`：前端战绩多标签解析（优先后端 `Tags`，v1 旧数据 fallback 本地）。
+- `frontend/src/rankingTags.ts`：前端战绩多标签解析（优先后端 `Tags`，v1 旧数据 fallback 本地），并提供 `tagInfo` 字典（每个 tag 的含义 + 触发条件文案）。
+- `frontend/src/components/CompactRankingTable.tsx`：紧凑战绩榜单，标签外层用 antd `Popover` 包裹，点击弹出含义/触发条件，点击其他位置自动关闭。
+- `frontend/src/components/EventHeatmap.tsx`：后台首页年度活动热力图，53 周 × 7 天，按日报名数分 5 档着色。
 - `cmd/genhash`：历史密码哈希工具，当前主程序管理员密码以 `--admin-pass` 明文参数启动后即时哈希。
 
 ## 开发约束

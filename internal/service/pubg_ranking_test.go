@@ -236,7 +236,7 @@ func TestFinalizeRankings_DoesNotGrantAceInWeakLobby(t *testing.T) {
 	}
 }
 
-func TestFinalizeRankings_HandlesAttendanceAndSampleConfidence(t *testing.T) {
+func TestFinalizeRankings_HandlesAttendanceAndConfidence(t *testing.T) {
 	// 5 局活动，但部分玩家出勤率 / 样本量很低
 	entries := []RankEntry{
 		{
@@ -263,24 +263,16 @@ func TestFinalizeRankings_HandlesAttendanceAndSampleConfidence(t *testing.T) {
 		byName[e.GameName] = e
 	}
 
-	// 仅出勤 2 局：出勤率 0.4 → 应贴 low_attendance；样本 < 3 局也应有 sample_scarce
-	if !findTagCode(byName["Latecomer"].Tags, TagAttendance) {
-		t.Errorf("Latecomer (0.4 attendance) expected low_attendance tag, got %+v", byName["Latecomer"].Tags)
-	}
-	if !findTagCode(byName["Latecomer"].Tags, TagSampleScarce) {
-		t.Errorf("Latecomer (2 matches) expected sample_scarce tag, got %+v", byName["Latecomer"].Tags)
-	}
-
 	// 仅出勤 1 局 → 置信度极低
 	if byName["Skipper"].Confidence != ConfidenceVeryLow {
 		t.Errorf("Skipper expected confidence very_low, got %q", byName["Skipper"].Confidence)
 	}
-	// 出勤 5 局 → 中等置信度
+	// 出勤 5 局 → 低/中等置信度
 	if byName["Regular"].Confidence != ConfidenceLow && byName["Regular"].Confidence != ConfidenceMedium {
 		t.Errorf("Regular expected confidence low/medium, got %q", byName["Regular"].Confidence)
 	}
 
-	// AttendanceRate 计算正确
+	// AttendanceRate / MissedMatches 计算正确
 	if got := byName["Latecomer"].AttendanceRate; got < 0.39 || got > 0.41 {
 		t.Errorf("Latecomer attendance rate expected ~0.4, got %.3f", got)
 	}
@@ -322,11 +314,9 @@ func TestPickPrimaryTitle_PrefersStrongTags(t *testing.T) {
 	}
 }
 
-func TestPickPrimaryTitle_IgnoresMVPAndAttendance(t *testing.T) {
+func TestPickPrimaryTitle_IgnoresMVP(t *testing.T) {
 	tags := []RankTag{
 		makeTag(TagMVP),
-		makeTag(TagAttendance),
-		makeTag(TagSampleScarce),
 		makeTag(TagBalanced),
 	}
 	primary := pickPrimaryTitle(tags)

@@ -7,24 +7,21 @@ import (
 
 // 标签代码常量。前端可基于 code 自定义渲染。
 const (
-	TagAce          = "ace"            // 钢枪王
-	TagBreaker      = "breaker"        // 突破手
-	TagSniperPos    = "sniper_pos"     // 架枪位
-	TagSteady       = "steady"         // 稳健吃鸡
-	TagOperator     = "operator"       // 运营大师
-	TagMedic        = "medic"          // 医疗兵
-	TagFinisher     = "finisher"       // 补枪位
-	TagReporter     = "reporter"       // 战地记者
-	TagCamper       = "camper"         // 伏地老六
-	TagCoward       = "coward"         // 怂 / 避战
-	TagWeak         = "weak"           // 菜 / 打不过
-	TagDuskShooter  = "dusk_shooter"   // 夕阳红枪法
-	TagBoxKing      = "box_king"       // 盒子精
-	TagCourier      = "courier"        // 快递员
-	TagBalanced     = "balanced"       // 均衡型
-	TagAttendance   = "low_attendance" // 出勤偏低
-	TagSampleScarce = "sample_scarce"  // 样本不足
-	TagMVP          = "mvp"            // 综合分 No.1
+	TagAce         = "ace"          // 钢枪王
+	TagBreaker     = "breaker"      // 突破手
+	TagSniperPos   = "sniper_pos"   // 架枪位
+	TagSteady      = "steady"       // 稳健吃鸡
+	TagOperator    = "operator"     // 运营大师
+	TagMedic       = "medic"        // 医疗兵
+	TagFinisher    = "finisher"     // 补枪位
+	TagReporter    = "reporter"     // 战地记者
+	TagCamper      = "camper"       // 伏地老六
+	TagCoward      = "coward"       // 怂 / 避战
+	TagWeak        = "weak"         // 菜 / 打不过
+	TagDuskShooter = "dusk_shooter" // 夕阳红枪法
+	TagBoxKing     = "box_king"     // 盒子精
+	TagBalanced    = "balanced"     // 均衡型
+	TagMVP         = "mvp"          // 综合分 No.1
 )
 
 // 置信度档位。
@@ -44,24 +41,21 @@ type tagDef struct {
 
 // 标签描述（label/color），后端统一管理避免前端重复定义。
 var tagCatalog = map[string]tagDef{
-	TagAce:          {Code: TagAce, Label: "🔥 钢枪王", Color: "#ff4d4f"},
-	TagBreaker:      {Code: TagBreaker, Label: "⚡ 突破手", Color: "#fa8c16"},
-	TagSniperPos:    {Code: TagSniperPos, Label: "🎯 架枪位", Color: "#722ed1"},
-	TagSteady:       {Code: TagSteady, Label: "🛡️ 稳健吃鸡", Color: "#1677ff"},
-	TagOperator:     {Code: TagOperator, Label: "🧭 运营大师", Color: "#13c2c2"},
-	TagMedic:        {Code: TagMedic, Label: "💊 医疗兵", Color: "#52c41a"},
-	TagFinisher:     {Code: TagFinisher, Label: "🎯 补枪位", Color: "#fa541c"},
-	TagReporter:     {Code: TagReporter, Label: "📷 战地记者", Color: "#faad14"},
-	TagCamper:       {Code: TagCamper, Label: "🐢 伏地老六", Color: "#52c41a"},
-	TagCoward:       {Code: TagCoward, Label: "😤 怂", Color: "#8c8c8c"},
-	TagWeak:         {Code: TagWeak, Label: "😵 打不过", Color: "#ff7875"},
-	TagDuskShooter:  {Code: TagDuskShooter, Label: "💫 夕阳红枪法", Color: "#bfbfbf"},
-	TagBoxKing:      {Code: TagBoxKing, Label: "📦 盒子精", Color: "#8c8c8c"},
-	TagCourier:      {Code: TagCourier, Label: "🚚 快递员", Color: "#a0a0a0"},
-	TagBalanced:     {Code: TagBalanced, Label: "⚖️ 均衡", Color: "#13c2c2"},
-	TagAttendance:   {Code: TagAttendance, Label: "🕒 出勤偏低", Color: "#bfbfbf"},
-	TagSampleScarce: {Code: TagSampleScarce, Label: "🎲 样本不足", Color: "#bfbfbf"},
-	TagMVP:          {Code: TagMVP, Label: "🏅 MVP", Color: "#f0a500"},
+	TagAce:         {Code: TagAce, Label: "🔥 钢枪王", Color: "#ff4d4f"},
+	TagBreaker:     {Code: TagBreaker, Label: "⚡ 突破手", Color: "#fa8c16"},
+	TagSniperPos:   {Code: TagSniperPos, Label: "🎯 架枪位", Color: "#722ed1"},
+	TagSteady:      {Code: TagSteady, Label: "🛡️ 稳健吃鸡", Color: "#1677ff"},
+	TagOperator:    {Code: TagOperator, Label: "🧭 运营大师", Color: "#13c2c2"},
+	TagMedic:       {Code: TagMedic, Label: "💊 医疗兵", Color: "#52c41a"},
+	TagFinisher:    {Code: TagFinisher, Label: "🎯 补枪位", Color: "#fa541c"},
+	TagReporter:    {Code: TagReporter, Label: "📷 战地记者", Color: "#faad14"},
+	TagCamper:      {Code: TagCamper, Label: "🐢 伏地老六", Color: "#52c41a"},
+	TagCoward:      {Code: TagCoward, Label: "😤 怂", Color: "#8c8c8c"},
+	TagWeak:        {Code: TagWeak, Label: "😵 打不过", Color: "#ff7875"},
+	TagDuskShooter: {Code: TagDuskShooter, Label: "💫 夕阳红枪法", Color: "#bfbfbf"},
+	TagBoxKing:     {Code: TagBoxKing, Label: "📦 盒子精", Color: "#8c8c8c"},
+	TagBalanced:    {Code: TagBalanced, Label: "⚖️ 均衡", Color: "#13c2c2"},
+	TagMVP:         {Code: TagMVP, Label: "🏅 MVP", Color: "#f0a500"},
 }
 
 // 主称号优先级（数值越小越优先）。参考设计稿 §12.2。
@@ -79,7 +73,6 @@ var primaryTitleOrder = map[string]int{
 	TagCamper:      33,
 	TagCoward:      34,
 	TagWeak:        35,
-	TagCourier:     36,
 	TagBalanced:    90,
 	TagMVP:         99, // MVP 仅作辅助标签，不作为主称号
 }
@@ -347,16 +340,6 @@ func applyTags(entries []RankEntry, mvpRegID int64) {
 		e := &entries[i]
 		tags := buildTagsForEntry(*e, avg)
 
-		// 出勤偏低（活动并集明显大于个人出勤）
-		if e.EventMatches >= 3 && e.AttendanceRate > 0 && e.AttendanceRate < 0.6 {
-			tags = append(tags, makeTag(TagAttendance))
-		}
-
-		// 样本不足
-		if e.Matches > 0 && e.Matches < 3 {
-			tags = append(tags, makeTag(TagSampleScarce))
-		}
-
 		// MVP（综合分 No.1）
 		if mvpRegID > 0 && e.RegID == mvpRegID && e.Matches > 0 {
 			tags = append([]RankTag{makeTag(TagMVP)}, tags...)
@@ -386,8 +369,8 @@ func pickPrimaryTitle(tags []RankTag) *RankTag {
 	best := -1
 	bestPriority := math.MaxInt
 	for i, t := range tags {
-		// 出勤偏低、样本不足、MVP 不作为主称号
-		if t.Code == TagAttendance || t.Code == TagSampleScarce || t.Code == TagMVP {
+		// MVP 仅作辅助标签，不作为主称号
+		if t.Code == TagMVP {
 			continue
 		}
 		p, ok := primaryTitleOrder[t.Code]
@@ -518,19 +501,6 @@ func composeComment(e RankEntry, _ teamAverages) string {
 		return "样本不足，仅展示数据，暂不下定论"
 	}
 
-	hasTag := func(code string) bool {
-		for _, t := range e.Tags {
-			if t.Code == code {
-				return true
-			}
-		}
-		return false
-	}
-
-	if hasTag(TagSampleScarce) {
-		return "样本不足，仅展示数据，暂不下定论"
-	}
-
 	code := ""
 	if e.PrimaryTitle != nil {
 		code = e.PrimaryTitle.Code
@@ -564,16 +534,10 @@ func composeComment(e RankEntry, _ teamAverages) string {
 		comment = "开火不少，但有效命中和伤害转化偏低"
 	case TagBoxKing:
 		comment = "容易过早阵亡，死前贡献明显不够"
-	case TagCourier:
-		comment = "正面收益和生存都比较吃亏，容易过早把资源送出去"
 	case TagBalanced:
 		comment = "没有特别突出的强项，但也不是全队最明显的短板"
 	default:
 		comment = "整体表现中规中矩，还需要更多样本再细看"
-	}
-
-	if hasTag(TagAttendance) {
-		comment += "，但出勤偏低，样本代表性有限"
 	}
 
 	return comment

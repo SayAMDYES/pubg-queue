@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Table, Button, Tag, Space, message, Modal, Spin } from 'antd';
 import { PlusOutlined, LogoutOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
 import { adminGetEvents, adminToggleEvent, adminDeleteEvent, adminLogout, adminCheck, type AdminEventRow } from '../../api';
+import EventHeatmap from '../../components/EventHeatmap';
 
 export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
@@ -94,9 +95,11 @@ export default function AdminDashboard() {
         <Space>
           <Button size="small" onClick={() => navigate(`/admin/events/${record.eventDate}`)}>详情</Button>
           <Button size="small" onClick={() => navigate(`/admin/events/${record.eventDate}/edit`)}>编辑</Button>
-          <Button size="small" onClick={() => handleToggle(record.eventDate)}>
-            {record.open ? '关闭' : '开放'}
-          </Button>
+          {!record.ended && (
+            <Button size="small" onClick={() => handleToggle(record.eventDate)}>
+              {record.open ? '关闭' : '开放'}
+            </Button>
+          )}
           <Button size="small" danger onClick={() => handleDelete(record.eventDate)}>删除</Button>
         </Space>
       ),
@@ -119,16 +122,19 @@ export default function AdminDashboard() {
         {loading ? (
           <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>
         ) : (
-          <div className="g-card">
-            <Table
-              dataSource={events}
-              columns={columns}
-              rowKey="eventDate"
-              pagination={{ pageSize: 20 }}
-              size="small"
-              scroll={{ x: 700 }}
-            />
-          </div>
+          <>
+            <EventHeatmap events={events} />
+            <div className="g-card">
+              <Table
+                dataSource={events}
+                columns={columns}
+                rowKey="eventDate"
+                pagination={{ pageSize: 20 }}
+                size="small"
+                scroll={{ x: 700 }}
+              />
+            </div>
+          </>
         )}
       </div>
     </div>

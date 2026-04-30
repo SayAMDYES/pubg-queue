@@ -1,7 +1,7 @@
 import { InfoCircleOutlined } from '@ant-design/icons';
-import { Table, Tag, Tooltip } from 'antd';
+import { Popover, Table, Tag, Tooltip } from 'antd';
 import type { RankEntry } from '../api';
-import { analysisStatusLabel, confidenceColor, confidenceLabel, resolveRankTags } from '../rankingTags';
+import { analysisStatusLabel, confidenceColor, confidenceLabel, resolveRankTags, tagInfo } from '../rankingTags';
 
 type CompactRankingTableProps = {
   rankings: RankEntry[];
@@ -188,9 +188,34 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
                 </div>
                 {tags.length > 0 ? (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {tags.map((tag, index) => (
-                      <Tag key={`${record.RankNo}-${tag.label}-${index}`} color={tag.color}>{tag.label}</Tag>
-                    ))}
+                    {tags.map((tag, index) => {
+                      const info = tagInfo[tag.code];
+                      const content = info ? (
+                        <div style={{ maxWidth: 300, display: 'grid', gap: 6 }}>
+                          <div><strong>含义：</strong>{info.description}</div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                            <strong>触发条件：</strong>{info.criteria}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ maxWidth: 280, color: 'var(--text-muted)', fontSize: 12 }}>暂无详细解释</div>
+                      );
+                      return (
+                        <span
+                          key={`${record.RankNo}-${tag.label}-${index}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Popover
+                            content={content}
+                            title={tag.label}
+                            trigger="click"
+                            placement="top"
+                          >
+                            <Tag color={tag.color} style={{ cursor: 'pointer' }}>{tag.label}</Tag>
+                          </Popover>
+                        </span>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{record.RankLabel || '点击展开查看详情'}</div>
