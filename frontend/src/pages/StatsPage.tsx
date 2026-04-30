@@ -106,7 +106,7 @@ export default function StatsPage() {
   const [selectedSeason, setSelectedSeason] = useState<string | undefined>(undefined);
   const [currentPage, setCurrentPage] = useState(1);
   const autoLoadedRef = useRef<string>('');
-  const { user, refresh: refreshUser } = useUserMe();
+  const { user, loading: userLoading, refresh: refreshUser } = useUserMe();
 
   useEffect(() => {
     setSearchHistory(getSearchHistory());
@@ -340,6 +340,17 @@ export default function StatsPage() {
           <TrophyOutlined style={{ marginRight: 8, color: 'var(--primary)' }} />战绩查询
         </div>
 
+        {userLoading ? (
+          <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>
+        ) : !user.loggedIn ? (
+          <div className="g-card" style={{ textAlign: 'center', padding: '48px 24px' }}>
+            <UserOutlined style={{ fontSize: 48, color: 'var(--text-dim)', marginBottom: 16 }} />
+            <div style={{ fontSize: 16, marginBottom: 8 }}>请先登录后使用战绩查询</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 24 }}>登录后可快速查询已关联的游戏 ID</div>
+            <Button type="primary" size="large" icon={<UserOutlined />} onClick={() => navigate('/login?next=/stats')}>登录 / 注册</Button>
+          </div>
+        ) : (
+        <>
         <div className="g-card" style={{ marginBottom: 24 }}>
           {user.loggedIn && user.gameNames.length > 0 && (
             <div style={{ marginBottom: 12 }}>
@@ -464,6 +475,8 @@ export default function StatsPage() {
               </div>
             )}
           </>
+        )}
+        </>
         )}
 
         <Modal

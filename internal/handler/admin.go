@@ -121,7 +121,7 @@ func (a *AdminHandlers) CreateEvent(w http.ResponseWriter, r *http.Request) {
 
 	teamCount, err := strconv.Atoi(teamCountStr)
 	if err != nil || teamCount < 1 {
-		teamCount = 2
+		teamCount = 1
 	}
 
 	_, err = a.db.Exec(
@@ -189,7 +189,7 @@ func (a *AdminHandlers) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 
 	teamCount, err := strconv.Atoi(teamCountStr)
 	if err != nil || teamCount < 1 {
-		teamCount = 2
+		teamCount = 1
 	}
 
 	_, err = a.db.Exec(

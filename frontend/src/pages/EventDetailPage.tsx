@@ -304,14 +304,16 @@ export default function EventDetailPage() {
                 </span>
               </div>
             </div>
-            <Button
-              icon={<CopyOutlined />}
-              size="small"
-              onClick={handleCopyInvite}
-              style={{ background: 'var(--surface-3)', borderColor: 'var(--border)', color: 'var(--text-muted)', flexShrink: 0 }}
-            >
-              一键邀请
-            </Button>
+            {!ev.ended && (
+              <Button
+                icon={<CopyOutlined />}
+                size="small"
+                onClick={handleCopyInvite}
+                style={{ background: 'var(--surface-3)', borderColor: 'var(--border)', color: 'var(--text-muted)', flexShrink: 0 }}
+              >
+                一键邀请
+              </Button>
+            )}
           </div>
           {ev.note && (
             <div style={{ marginTop: 12, padding: '8px 10px', background: 'rgba(240,165,0,0.06)', borderRadius: 4, borderLeft: '3px solid rgba(240,165,0,0.4)', fontSize: 13, color: 'var(--text-muted)' }}>

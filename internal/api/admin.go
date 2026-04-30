@@ -154,7 +154,7 @@ func (a *AdminAPI) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.TeamCount < 1 {
-		req.TeamCount = 2
+		req.TeamCount = 1
 	}
 
 	_, err := a.db.Exec(
@@ -197,7 +197,7 @@ func (a *AdminAPI) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.TeamCount < 1 {
-		req.TeamCount = 2
+		req.TeamCount = 1
 	}
 
 	_, err := a.db.Exec(

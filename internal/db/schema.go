@@ -13,7 +13,7 @@ func Migrate(db *sql.DB) error {
 			id          INTEGER PRIMARY KEY AUTOINCREMENT,
 			event_date  TEXT    NOT NULL UNIQUE,
 			open        INTEGER NOT NULL DEFAULT 1,
-			team_count  INTEGER NOT NULL DEFAULT 2,
+			team_count  INTEGER NOT NULL DEFAULT 1,
 			note        TEXT,
 			start_time  TEXT,
 			end_time    TEXT,

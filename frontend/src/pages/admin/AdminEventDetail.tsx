@@ -10,7 +10,11 @@ import CompactRankingTable from '../../components/CompactRankingTable';
 function formatTimeRange(start?: string, end?: string): string {
   if (!start && !end) return '-';
   const fmt = (s: string) => {
-    const d = new Date(s.includes('T') ? s : `1970-01-01T${s}`);
+    if (!s.includes('T')) {
+      // 纯时间 HH:mm，直接返回不带日期
+      return s.length >= 5 ? s.slice(0, 5) : s;
+    }
+    const d = new Date(s);
     if (isNaN(d.getTime())) return s;
     return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   };
