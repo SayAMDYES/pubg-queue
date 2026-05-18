@@ -124,7 +124,6 @@ export default function AdminEventForm() {
                 format="YYYY-MM-DD"
                 style={{ width: '100%' }}
                 disabled={isEdit}
-                disabledDate={(current) => !isEdit && current && current < dayjs().startOf('day')}
               />
             </Form.Item>
             <Form.Item name="teamCount" label="队伍数量" rules={[{ required: true }]}>
