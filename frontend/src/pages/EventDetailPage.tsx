@@ -7,6 +7,7 @@ import {
   type EventDetailData, type RegisterResult, type LeaveResult, type PlayerStatsOverview, type MatchDetail, type SeasonInfo,
 } from '../api';
 import CompactRankingTable from '../components/CompactRankingTable';
+import TeamPerformanceOverview, { TeamHeaderSummary } from '../components/TeamPerformanceOverview';
 
 export default function EventDetailPage() {
   const { date } = useParams<{ date: string }>();
@@ -224,6 +225,7 @@ export default function EventDetailPage() {
   }
 
   const { event: ev, teams, waitlist, rankings, gameNames, pubgEnabled, userLoggedIn, userPhone, userRegistered, userStatus, userTeamNo, userSlotNo } = data;
+  const hasRankings = !!rankings && rankings.length > 0;
 
   const statusColor = ev.ended ? 'var(--text-dim)' : !ev.open ? 'var(--text-muted)' : data.registeredCount >= data.capacity ? 'var(--danger)' : 'var(--success)';
   const statusLabel = ev.ended ? '已结束' : !ev.open ? '已关闭' : data.registeredCount >= data.capacity ? '已满员' : '报名开放';
@@ -304,16 +306,19 @@ export default function EventDetailPage() {
                 </span>
               </div>
             </div>
-            {!ev.ended && (
-              <Button
-                icon={<CopyOutlined />}
-                size="small"
-                onClick={handleCopyInvite}
-                style={{ background: 'var(--surface-3)', borderColor: 'var(--border)', color: 'var(--text-muted)', flexShrink: 0 }}
-              >
-                一键邀请
-              </Button>
-            )}
+            <div style={{ display: 'grid', gap: 10, justifyItems: 'end', flex: hasRankings ? '1 1 360px' : '0 0 auto' }}>
+              {!ev.ended && (
+                <Button
+                  icon={<CopyOutlined />}
+                  size="small"
+                  onClick={handleCopyInvite}
+                  style={{ background: 'var(--surface-3)', borderColor: 'var(--border)', color: 'var(--text-muted)', flexShrink: 0 }}
+                >
+                  一键邀请
+                </Button>
+              )}
+              {hasRankings && <TeamHeaderSummary rankings={rankings} />}
+            </div>
           </div>
           {ev.note && (
             <div style={{ marginTop: 12, padding: '8px 10px', background: 'rgba(240,165,0,0.06)', borderRadius: 4, borderLeft: '3px solid rgba(240,165,0,0.4)', fontSize: 13, color: 'var(--text-muted)' }}>
@@ -321,6 +326,10 @@ export default function EventDetailPage() {
             </div>
           )}
         </div>
+
+        {ev.ended && hasRankings && (
+          <TeamPerformanceOverview rankings={rankings} />
+        )}
 
         {/* Teams */}
         <div style={{ marginBottom: 4 }}>
@@ -409,7 +418,7 @@ export default function EventDetailPage() {
         )}
 
         {/* Rankings — 已结束且有战绩数据时显示 */}
-        {ev.ended && rankings && rankings.length > 0 && (
+        {ev.ended && hasRankings && (
           <div className="g-card" style={{ marginBottom: 16 }}>
             <div className="g-card__header">
               <TrophyOutlined />

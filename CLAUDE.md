@@ -37,8 +37,8 @@ docker compose up -d --build
 - `main.go` — 入口：解析 `--admin-pass` 并 bcrypt 哈希（不写磁盘）、加载配置、初始化 DB、注册路由、嵌入前端静态资源
 - `internal/api/` — JSON API 处理器
   - `response.go` — 统一响应：`Success(w, data)` / `Error(w, code, msg)` / `JSON(w, code, data)`
-  - `public.go` — 前台 API（日历、活动详情、报名、离队、战绩查询、用户登录/登出/me）
-  - `admin.go` — 后台 API（活动 CRUD、用户管理、战绩排名刷新、CSV 导出）
+  - `public.go` — 前台 API（日历、活动详情、报名、离队、战绩查询、赛季列表、用户登录/登出/me）
+  - `admin.go` — 后台 API（活动 CRUD、手动报名/移除、用户管理、游戏名管理、战绩排名刷新、CSV 导出）
   - `ranking_jobs.go` — 战绩刷新多阶段任务状态机（`match_fetching → basic_ready → telemetry_processing → full_ready / partial_ready / failed`）
   - `helpers.go` — 公用辅助函数
 - `internal/service/` — 业务逻辑
@@ -58,8 +58,9 @@ docker compose up -d --build
 **前端** (`React 19`, `TypeScript`, `Ant Design 6`, `React Router v7`, `Vite 8`):
 
 - `frontend/src/pages/` — 页面组件：`CalendarPage`, `EventDetailPage`, `StatsPage`, `UserLoginPage`, `admin/`
+- `frontend/src/components/` — 共享组件：`CompactRankingTable`（前后台统一折叠榜单）、`EventHeatmap`（年度活动热力图）
 - `frontend/src/api.ts` — 后端 API 接口定义；`RankEntry` / `RankTag` / `RankingPhase` / `RankingStatusData`
-- `frontend/src/rankingTags.ts` — `resolveRankTags()` 优先消费后端 `Tags`；旧 v1 数据 fallback 到本地 `fallbackComputeTags`；`confidenceLabel` / `analysisStatusLabel` 文案表
+- `frontend/src/rankingTags.ts` — `resolveRankTags()` 优先消费后端 `Tags`；旧 v1 数据 fallback 到本地 `fallbackComputeTags`；`confidenceLabel` / `analysisStatusLabel` / `tagInfo` 文案表
 - `frontend/src/request.ts` — Axios HTTP 客户端
 - `frontend/src/hooks/useUserMe.ts` — 用户认证 hook（调用 `/api/user/me`）
 - 暗色主题配置集中在 `App.tsx` 的 `ConfigProvider` 中
