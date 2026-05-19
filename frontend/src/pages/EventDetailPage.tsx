@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Form, Input, Button, Select, message, Spin, Popconfirm, Tooltip, Modal, Row, Col, Statistic, Table, Space, Tag, Divider, Pagination, Progress, Descriptions } from 'antd';
 import { CopyOutlined, ArrowLeftOutlined, UserAddOutlined, LogoutOutlined, UserOutlined, LoginOutlined, TrophyOutlined } from '@ant-design/icons';
@@ -168,6 +168,27 @@ export default function EventDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoLoadedRef.current]);
 
+  const rankingsByTeamMemo = useMemo(() => {
+    if (!data) return [];
+    const { rankings: r, teams: t } = data;
+    if (!r || r.length === 0) return [];
+    const nameToTeam = new Map<string, number>();
+    for (const team of t) {
+      for (const slot of team.slots) {
+        if (slot.filled && slot.name) nameToTeam.set(slot.name, team.teamNo);
+      }
+    }
+    const grouped = new Map<number, typeof r>();
+    for (const entry of r) {
+      const teamNo = nameToTeam.get(entry.GameName) ?? 0;
+      if (!grouped.has(teamNo)) grouped.set(teamNo, []);
+      grouped.get(teamNo)!.push(entry);
+    }
+    return Array.from(grouped.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([teamNo, entries]) => ({ teamNo, entries }));
+  }, [data]);
+
   if (regResult) {
     return (
       <div className="page-wrap">
@@ -226,6 +247,8 @@ export default function EventDetailPage() {
 
   const { event: ev, teams, waitlist, rankings, gameNames, pubgEnabled, userLoggedIn, userPhone, userRegistered, userStatus, userTeamNo, userSlotNo } = data;
   const hasRankings = !!rankings && rankings.length > 0;
+
+  const rankingsByTeam = rankingsByTeamMemo;
 
   const statusColor = ev.ended ? 'var(--text-dim)' : !ev.open ? 'var(--text-muted)' : data.registeredCount >= data.capacity ? 'var(--danger)' : 'var(--success)';
   const statusLabel = ev.ended ? '已结束' : !ev.open ? '已关闭' : data.registeredCount >= data.capacity ? '已满员' : '报名开放';
@@ -317,7 +340,7 @@ export default function EventDetailPage() {
                   一键邀请
                 </Button>
               )}
-              {hasRankings && <TeamHeaderSummary rankings={rankings} />}
+              {hasRankings && rankingsByTeam.length === 1 && <TeamHeaderSummary rankings={rankings} />}
             </div>
           </div>
           {ev.note && (
@@ -326,10 +349,6 @@ export default function EventDetailPage() {
             </div>
           )}
         </div>
-
-        {ev.ended && hasRankings && (
-          <TeamPerformanceOverview rankings={rankings} />
-        )}
 
         {/* Teams */}
         <div style={{ marginBottom: 4 }}>
@@ -417,15 +436,9 @@ export default function EventDetailPage() {
           </div>
         )}
 
-        {/* Rankings — 已结束且有战绩数据时显示 */}
+        {/* Rankings — 已结束且有战绩数据时显示，按队伍分组 */}
         {ev.ended && hasRankings && (
-          <div className="g-card" style={{ marginBottom: 16 }}>
-            <div className="g-card__header">
-              <TrophyOutlined />
-              战绩排名
-            </div>
-            <CompactRankingTable rankings={rankings} />
-          </div>
+          <TeamRankingPanel groups={rankingsByTeam} />
         )}
 
         {/* Register */}
@@ -777,5 +790,68 @@ function ParticipantStats({ p, highlight }: { p: import('../api').MatchParticipa
         </div>
       </Col>
     </Row>
+  );
+}
+
+function TeamRankingPanel({ groups }: { groups: { teamNo: number; entries: import('../api').RankEntry[] }[] }) {
+  const [expandedTeam, setExpandedTeam] = useState<number | null>(() => groups.length === 1 ? groups[0].teamNo : null);
+
+  if (groups.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div className="g-card" style={{ marginBottom: 0 }}>
+        <div className="g-card__header">
+          <TrophyOutlined />
+          战绩排名
+        </div>
+
+        {groups.length > 1 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            {groups.map(({ teamNo }) => {
+              const active = expandedTeam === teamNo;
+              return (
+                <button
+                  key={teamNo}
+                  type="button"
+                  onClick={() => setExpandedTeam(active ? null : teamNo)}
+                  style={{
+                    border: `1px solid ${active ? 'rgba(240,165,0,0.6)' : 'var(--border)'}`,
+                    background: active ? 'rgba(240,165,0,0.12)' : 'rgba(15,23,42,0.4)',
+                    color: active ? '#f0a500' : 'var(--text-muted)',
+                    borderRadius: 999,
+                    padding: '6px 16px',
+                    fontFamily: 'var(--body-font)',
+                    fontSize: 13,
+                    fontWeight: active ? 600 : 400,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {teamNo === 0 ? '未分组' : `第 ${teamNo} 队`}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {expandedTeam !== null && (() => {
+          const group = groups.find((g) => g.teamNo === expandedTeam);
+          if (!group) return null;
+          return (
+            <div>
+              <TeamPerformanceOverview rankings={group.entries} />
+              <CompactRankingTable rankings={group.entries} />
+            </div>
+          );
+        })()}
+
+        {expandedTeam === null && groups.length > 1 && (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+            点击上方队伍按钮查看该队战绩详情
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
