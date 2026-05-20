@@ -177,7 +177,7 @@ export function buildTeamStats(rankings: RankEntry[]): TeamStats {
 
 function MiniMetric({ label, value, tone = 'muted' }: { label: string; value: string; tone?: MetricTone }) {
   return (
-    <div style={{ minWidth: 92, padding: '8px 10px', border: '1px solid rgba(148,163,184,0.14)', borderRadius: 10, background: 'rgba(15, 23, 42, 0.34)' }}>
+    <div style={{ minWidth: 0, padding: '8px 10px', border: '1px solid rgba(148,163,184,0.14)', borderRadius: 10, background: 'rgba(15, 23, 42, 0.34)' }}>
       <div style={{ fontFamily: 'var(--heading-font)', fontSize: 16, lineHeight: 1.1, color: toneColor[tone], fontVariantNumeric: 'tabular-nums' }}>{value}</div>
       <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>{label}</div>
     </div>
@@ -188,7 +188,7 @@ export function TeamHeaderSummary({ rankings }: TeamPerformanceOverviewProps) {
   if (rankings.length === 0) return null;
   const stats = buildTeamStats(rankings);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: 8, minWidth: 320, flex: 1 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 8, width: '100%' }}>
       <MiniMetric label="队伍评分" value={formatNumber(stats.totalScore, 1)} tone="gold" />
       <MiniMetric label="总伤害" value={formatNumber(stats.totalDamage, 0)} tone="gold" />
       <MiniMetric label="总击杀" value={String(stats.totalKills)} tone="orange" />

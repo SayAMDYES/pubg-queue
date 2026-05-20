@@ -289,6 +289,7 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
       pagination={false}
       size={size}
       rowKey="RankNo"
+      scroll={{ x: 600 }}
       columns={[
         {
           title: '排名',

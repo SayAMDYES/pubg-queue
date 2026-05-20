@@ -329,7 +329,7 @@ export default function EventDetailPage() {
                 </span>
               </div>
             </div>
-            <div style={{ display: 'grid', gap: 10, justifyItems: 'end', flex: hasRankings ? '1 1 360px' : '0 0 auto' }}>
+            <div style={{ display: 'grid', gap: 10, justifyItems: 'end', flex: hasRankings ? '1 1 auto' : '0 0 auto', minWidth: 0 }}>
               {!ev.ended && (
                 <Button
                   icon={<CopyOutlined />}

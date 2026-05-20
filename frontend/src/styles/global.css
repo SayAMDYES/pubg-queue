@@ -698,6 +698,7 @@ body {
 @media (max-width: 768px) {
   .page-title--lg { font-size: 26px; }
   .stat-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+  .g-card { overflow-x: auto; }
   .ant-modal {
     max-width: calc(100vw - 32px) !important;
   }
