@@ -1,10 +1,52 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Form, Input, Button, message } from 'antd';
+import { Form, Input, Button, message, Checkbox } from 'antd';
 import { MobileOutlined, LockOutlined } from '@ant-design/icons';
 import { userLogin, userMe } from '../api';
 
+const REMEMBER_LOGIN_KEY = 'pubg-queue:user-login';
+
+interface LoginValues {
+  phone: string;
+  password: string;
+  remember: boolean;
+}
+
+function getRememberedLogin(): LoginValues {
+  try {
+    const raw = localStorage.getItem(REMEMBER_LOGIN_KEY);
+    if (!raw) {
+      return { phone: '', password: '', remember: false };
+    }
+    const data = JSON.parse(raw) as Partial<LoginValues>;
+    return {
+      phone: typeof data.phone === 'string' ? data.phone : '',
+      password: typeof data.password === 'string' ? data.password : '',
+      remember: true,
+    };
+  } catch {
+    return { phone: '', password: '', remember: false };
+  }
+}
+
+function saveRememberedLogin(values: LoginValues) {
+  try {
+    if (values.remember) {
+      localStorage.setItem(REMEMBER_LOGIN_KEY, JSON.stringify({
+        phone: values.phone,
+        password: values.password,
+      }));
+      return;
+    }
+    localStorage.removeItem(REMEMBER_LOGIN_KEY);
+  } catch {
+    // Ignore browsers that block local storage.
+  }
+}
+
 export default function UserLoginPage() {
+  const [form] = Form.useForm<LoginValues>();
+  const [initialValues] = useState<LoginValues>(() => getRememberedLogin());
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -16,10 +58,11 @@ export default function UserLoginPage() {
       .catch(() => {/* not logged in */});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onFinish = async (values: { phone: string; password: string }) => {
+  const onFinish = async (values: LoginValues) => {
     setLoading(true);
     try {
-      await userLogin(values);
+      await userLogin({ phone: values.phone, password: values.password });
+      saveRememberedLogin(values);
       message.success('登录成功');
       navigate(next, { replace: true });
     } catch (err: unknown) {
@@ -52,7 +95,7 @@ export default function UserLoginPage() {
           <p style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', marginBottom: 20 }}>
             首次使用将自动注册账号
           </p>
-          <Form onFinish={onFinish} layout="vertical">
+          <Form form={form} onFinish={onFinish} layout="vertical" initialValues={initialValues}>
             <Form.Item
               name="phone"
               label="手机号"
@@ -64,9 +107,12 @@ export default function UserLoginPage() {
               name="password"
               label="密码"
               rules={[{ required: true, min: 6, message: '密码至少6位' }]}
-              style={{ marginBottom: 20 }}
+              style={{ marginBottom: 8 }}
             >
               <Input.Password prefix={<LockOutlined style={{ color: 'var(--text-dim)' }} />} placeholder="密码（至少6位）" size="large" />
+            </Form.Item>
+            <Form.Item name="remember" valuePropName="checked" style={{ marginBottom: 20 }}>
+              <Checkbox>记住密码</Checkbox>
             </Form.Item>
             <Button type="primary" htmlType="submit" loading={loading} block size="large">
               登录 / 注册
