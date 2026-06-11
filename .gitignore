@@ -5,6 +5,9 @@ pubg-queue
 
 .idea/
 
+# 本地部署说明
+deploy.md
+
 # 数据目录（SQLite数据库）
 data/
 

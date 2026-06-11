@@ -6,11 +6,6 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { adminCreateEvent, adminUpdateEvent, adminGetEventDetail } from '../../api';
 
-/** 用 date 的年月日 + time 的时分组合成新 dayjs */
-function mergeDateAndTime(date: dayjs.Dayjs, time: dayjs.Dayjs): dayjs.Dayjs {
-  return date.hour(time.hour()).minute(time.minute()).second(0).millisecond(0);
-}
-
 export default function AdminEventForm() {
   const { date } = useParams<{ date: string }>();
   const isEdit = !!date;
@@ -18,11 +13,6 @@ export default function AdminEventForm() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
-
-  // 用于自动预填实际开战/结束时间
-  const eventDate = Form.useWatch<dayjs.Dayjs | undefined>('eventDate', form);
-  const startTime = Form.useWatch<dayjs.Dayjs | undefined>('startTime', form);
-  const endTime = Form.useWatch<dayjs.Dayjs | undefined>('endTime', form);
 
   useEffect(() => {
     if (isEdit && date) {
@@ -47,26 +37,6 @@ export default function AdminEventForm() {
         .finally(() => setLoading(false));
     }
   }, [date, isEdit, form, navigate]);
-
-  // 预计开始时间变化且实际开战时间为空时，预填为「活动日期 + 预计开始」
-  useEffect(() => {
-    if (!eventDate || !startTime) return;
-    if (form.getFieldValue('actualStart')) return;
-    form.setFieldsValue({ actualStart: mergeDateAndTime(eventDate, startTime) });
-  }, [eventDate, startTime, form]);
-
-  // 预计结束时间变化且实际结束时间为空时，预填；若结束早于开始则视为次日
-  useEffect(() => {
-    if (!eventDate || !endTime) return;
-    if (form.getFieldValue('actualEnd')) return;
-    let merged = mergeDateAndTime(eventDate, endTime);
-    if (startTime) {
-      const sm = startTime.hour() * 60 + startTime.minute();
-      const em = endTime.hour() * 60 + endTime.minute();
-      if (em < sm) merged = merged.add(1, 'day');
-    }
-    form.setFieldsValue({ actualEnd: merged });
-  }, [eventDate, startTime, endTime, form]);
 
   const onFinish = async (values: {
     eventDate: dayjs.Dayjs | null;
@@ -135,12 +105,16 @@ export default function AdminEventForm() {
             <Form.Item name="endTime" label="预计结束时间">
               <TimePicker format="HH:mm" style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item name="actualStart" label="实际开战时间">
-              <DatePicker showTime={{ format: 'HH:mm' }} format="YYYY-MM-DD HH:mm" style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="actualEnd" label="实际结束时间">
-              <DatePicker showTime={{ format: 'HH:mm' }} format="YYYY-MM-DD HH:mm" style={{ width: '100%' }} />
-            </Form.Item>
+            {isEdit && (
+              <>
+                <Form.Item name="actualStart" label="实际开战时间">
+                  <DatePicker showTime={{ format: 'HH:mm' }} format="YYYY-MM-DD HH:mm" style={{ width: '100%' }} />
+                </Form.Item>
+                <Form.Item name="actualEnd" label="实际结束时间">
+                  <DatePicker showTime={{ format: 'HH:mm' }} format="YYYY-MM-DD HH:mm" style={{ width: '100%' }} />
+                </Form.Item>
+              </>
+            )}
             <Form.Item name="note" label="备注">
               <Input.TextArea rows={3} placeholder="活动备注（可选）" />
             </Form.Item>

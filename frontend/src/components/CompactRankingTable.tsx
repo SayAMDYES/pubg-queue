@@ -400,6 +400,7 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
                 renderDetailMetric(metricTips.kills, formatCount(record.Kills), record.Kills === maxima.kills && record.Kills > 0),
                 renderDetailMetric(metricTips.dbnos, formatCount(record.DBNOs), (record.DBNOs || 0) === maxima.dbnos && (record.DBNOs || 0) > 0),
                 renderDetailMetric(metricTips.totalDamage, formatFixed(getTotalDamage(record), 0), getTotalDamage(record) === maxima.totalDamage && getTotalDamage(record) > 0),
+                renderDetailMetric(metricTips.avgDamage, formatFixed(record.AvgDamage, 0), (record.AvgDamage || 0) === maxima.avgDamage && (record.AvgDamage || 0) > 0),
                 renderDetailMetric(metricTips.kda, formatFixed(record.KDA, 2), (record.KDA || 0) === maxima.kda && (record.KDA || 0) > 0),
                 renderDetailMetric(metricTips.kpg, formatFixed(record.KPG, 2), (record.KPG || 0) === maxima.kpg && (record.KPG || 0) > 0),
                 renderDetailMetric(metricTips.knockConversionRate, formatPercent(getKnockConversionRate(record)), getKnockConversionRate(record) === maxima.knockConversionRate && getKnockConversionRate(record) !== null),
