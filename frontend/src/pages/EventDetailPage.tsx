@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Form, Input, Button, Select, message, Spin, Popconfirm, Tooltip, Modal, Row, Col, Statistic, Table, Space, Tag, Divider, Pagination, Progress, Descriptions } from 'antd';
-import { CopyOutlined, ArrowLeftOutlined, UserAddOutlined, LogoutOutlined, UserOutlined, LoginOutlined, TrophyOutlined } from '@ant-design/icons';
+import { CopyOutlined, ArrowLeftOutlined, CheckCircleOutlined, ClockCircleOutlined, UserAddOutlined, LogoutOutlined, UserOutlined, LoginOutlined, TeamOutlined, TrophyOutlined } from '@ant-design/icons';
 import {
   getEventDetail, registerEvent, leaveEvent, userLogout, getPlayerStats, getMatchDetail, getSeasons,
   type EventDetailData, type RegisterResult, type LeaveResult, type PlayerStatsOverview, type MatchDetail, type SeasonInfo,
@@ -194,15 +194,17 @@ export default function EventDetailPage() {
       <div className="page-wrap">
         <div className="page-inner" style={{ maxWidth: 560 }}>
           <div className="g-card g-card--accent" style={{ textAlign: 'center', padding: '48px 32px' }}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 16 }}>
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
+            <CheckCircleOutlined style={{ color: 'var(--success)', fontSize: 48, marginBottom: 16 }} />
             <div className="page-title" style={{ marginBottom: 8, textShadow: '0 0 24px var(--success-glow)' }}>报名成功</div>
             <p style={{ color: 'var(--text-muted)', marginBottom: 4 }}>
               {regResult.name}（{regResult.maskedPhone}）
             </p>
             <p style={{ color: regResult.status === 'assigned' ? 'var(--success)' : 'var(--warning)', marginBottom: 24 }}>
-              {regResult.status === 'assigned' ? '✓ 已分配到队伍' : '⏳ 已加入候补'}
+              {regResult.status === 'assigned' ? (
+                <span className="result-state"><CheckCircleOutlined />已分配到队伍</span>
+              ) : (
+                <span className="result-state"><ClockCircleOutlined />已加入候补</span>
+              )}
             </p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <Button type="primary" onClick={() => { setRegResult(null); load(); }}>返回活动</Button>
@@ -219,13 +221,13 @@ export default function EventDetailPage() {
       <div className="page-wrap">
         <div className="page-inner" style={{ maxWidth: 560 }}>
           <div className="g-card g-card--accent" style={{ textAlign: 'center', padding: '48px 32px' }}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 16 }}>
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
+            <LogoutOutlined style={{ color: 'var(--primary)', fontSize: 48, marginBottom: 16 }} />
             <div className="page-title" style={{ marginBottom: 8 }}>离队成功</div>
             <p style={{ color: 'var(--text-muted)', marginBottom: 4 }}>{leaveResult.leftName} 已离队</p>
             {leaveResult.promotedName && (
-              <p style={{ color: 'var(--success)', marginBottom: 24 }}>🎉 {leaveResult.promotedName} 已从候补递补入队！</p>
+              <p className="result-state" style={{ color: 'var(--success)', marginBottom: 24 }}>
+                <TrophyOutlined />{leaveResult.promotedName} 已从候补递补入队
+              </p>
             )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <Button type="primary" onClick={() => { setLeaveResult(null); load(); }}>返回活动</Button>
@@ -316,16 +318,16 @@ export default function EventDetailPage() {
               <div className="page-title" style={{ marginBottom: 8 }}>{ev.eventDate}</div>
               <div className="flex-gap-8" style={{ flexWrap: 'wrap' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: statusColor }}>
-                  <span className={`status-dot status-dot--${!ev.open ? 'closed' : data.registeredCount >= data.capacity ? 'full' : 'open'}`} />
+                  <span className={`status-dot status-dot--${ev.ended || !ev.open ? 'closed' : data.registeredCount >= data.capacity ? 'full' : 'open'}`} />
                   {statusLabel}
                 </span>
                 {ev.startTime && (
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    ⏱ {ev.startTime}{ev.endTime ? ` - ${ev.endTime}` : ''}
+                  <span className="inline-meta" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    <ClockCircleOutlined />{ev.startTime}{ev.endTime ? ` - ${ev.endTime}` : ''}
                   </span>
                 )}
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  👥 {data.registeredCount}/{data.capacity}
+                <span className="inline-meta" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  <TeamOutlined />{data.registeredCount}/{data.capacity}
                 </span>
               </div>
             </div>
@@ -358,10 +360,7 @@ export default function EventDetailPage() {
           {teams.map((team) => (
             <div key={team.teamNo} className="team-card">
               <div className="team-card__header">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
+                <TeamOutlined />
                 第 {team.teamNo} 队
               </div>
               {team.slots.map((slot, idx) => {
@@ -404,7 +403,7 @@ export default function EventDetailPage() {
                               size="small"
                               danger
                               loading={submitting}
-                              style={{ marginLeft: 4, fontSize: 11, height: 20, padding: '0 6px' }}
+                              style={{ marginLeft: 4, fontSize: 11, minHeight: 28, padding: '0 8px' }}
                             >
                               离队
                             </Button>
@@ -423,7 +422,7 @@ export default function EventDetailPage() {
         {waitlist.length > 0 && (
           <div className="g-card" style={{ marginBottom: 16 }}>
             <div className="g-card__header">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+              <ClockCircleOutlined />
               候补名单 ({waitlist.length})
             </div>
             {waitlist.map((w, idx) => (

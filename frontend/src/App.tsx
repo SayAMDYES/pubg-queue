@@ -28,9 +28,16 @@ function App() {
           colorText: '#dde1e9',
           colorTextSecondary: '#7a8494',
           colorTextTertiary: '#454e5e',
+          colorInfo: '#38bdf8',
+          colorSuccess: '#22c55e',
+          colorWarning: '#f97316',
+          colorError: '#ef4444',
           borderRadius: 6,
           fontFamily: "'Chakra Petch', -apple-system, sans-serif",
           fontSize: 13,
+          controlHeight: 38,
+          controlHeightLG: 42,
+          controlHeightSM: 30,
         },
         components: {
           Table: {

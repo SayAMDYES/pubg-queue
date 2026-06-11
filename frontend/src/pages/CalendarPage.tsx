@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Spin, message } from 'antd';
-import { LeftOutlined, RightOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
+import { CalendarOutlined, DownOutlined, LeftOutlined, RightOutlined, StarOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
 import { getCalendar, userLogout, type CalendarDay } from '../api';
 import { useUserMe } from '../hooks/useUserMe';
 
@@ -28,6 +28,11 @@ export default function CalendarPage() {
   const pickerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { user, refresh: refreshUser } = useUserMe();
+  const nextEvent = useMemo(
+    () => days.find((day) => day.hasEvent && !day.ended && !day.past) ?? days.find((day) => day.hasEvent),
+    [days],
+  );
+  const nextEventStatus = nextEvent ? getDayStatus(nextEvent) : null;
 
   const load = useCallback((month?: string) => {
     setLoading(true);
@@ -74,10 +79,8 @@ export default function CalendarPage() {
 
         {/* Top bar */}
         <div className="top-bar">
-          <div className="flex-gap-8">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
+          <div className="brand-mark">
+            <StarOutlined style={{ fontSize: 20 }} />
             <span className="page-title page-title--sm">PUBG SQUAD</span>
           </div>
           <div>
@@ -115,20 +118,45 @@ export default function CalendarPage() {
           <div className="section-label" style={{ color: 'var(--text-dim)' }}>SQUAD LOBBY CALENDAR</div>
         </div>
 
+        {!loading && nextEvent && nextEventStatus && (
+          <div className="g-card g-card--accent event-brief">
+            <div>
+              <div className="event-brief__eyebrow">
+                <CalendarOutlined />
+                NEXT DROP
+              </div>
+              <div className="event-brief__date">{nextEvent.date}</div>
+              <div className="event-brief__meta">
+                {nextEvent.startTime && <span>{nextEvent.startTime} 开始</span>}
+                <span className="event-brief__status" style={{ color: nextEventStatus.color }}>
+                  <span className={`status-dot ${nextEventStatus.dotCls}`} />
+                  {nextEventStatus.label}
+                </span>
+                <span>{nextEvent.registered}/{nextEvent.capacity} 已报名</span>
+              </div>
+            </div>
+            <Button type="primary" size="large" onClick={() => navigate(`/date/${nextEvent.date}`)}>
+              进入队伍大厅
+            </Button>
+          </div>
+        )}
+
         {/* Month navigator */}
         <div className="flex-between" style={{ marginBottom: 14 }}>
           <Button
             icon={<LeftOutlined />}
+            aria-label="上个月"
             onClick={() => load(prevMonth)}
             style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}
           />
           <div ref={pickerRef} style={{ position: 'relative' }}>
-            <span
-              style={{ fontFamily: 'var(--heading-font)', fontSize: 15, letterSpacing: '0.08em', color: 'var(--text)', cursor: 'pointer', userSelect: 'none' }}
+            <button
+              type="button"
+              className="month-picker__trigger"
               onClick={() => setPickerOpen((v) => !v)}
             >
-              {monthStr} ▾
-            </span>
+              {monthStr} <DownOutlined style={{ fontSize: 10 }} />
+            </button>
             {pickerOpen && (
               <div style={{
                 position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
@@ -138,9 +166,13 @@ export default function CalendarPage() {
               }}>
                 {/* Year selector */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 10 }}>
-                  <span style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, padding: '2px 6px' }} onClick={() => setYear((y) => y - 1)}>◀</span>
+                  <button type="button" className="month-picker__step" onClick={() => setYear((y) => y - 1)}>
+                    <LeftOutlined />
+                  </button>
                   <span style={{ color: 'var(--text)', fontWeight: 600, fontSize: 15, minWidth: 40, textAlign: 'center' }}>{year}</span>
-                  <span style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, padding: '2px 6px' }} onClick={() => setYear((y) => y + 1)}>▶</span>
+                  <button type="button" className="month-picker__step" onClick={() => setYear((y) => y + 1)}>
+                    <RightOutlined />
+                  </button>
                 </div>
                 {/* Month grid */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
@@ -148,18 +180,14 @@ export default function CalendarPage() {
                     const m = i + 1;
                     const active = m === month;
                     return (
-                      <span
+                      <button
+                        type="button"
                         key={m}
-                        style={{
-                          textAlign: 'center', padding: '6px 0', borderRadius: 6, cursor: 'pointer', fontSize: 13,
-                          background: active ? 'var(--primary)' : 'transparent',
-                          color: active ? '#fff' : 'var(--text-muted)',
-                          fontWeight: active ? 600 : 400,
-                        }}
+                        className={`month-picker__month${active ? ' month-picker__month--active' : ''}`}
                         onClick={() => { setPickerOpen(false); load(`${year}-${String(m).padStart(2, '0')}`); }}
                       >
                         {m}月
-                      </span>
+                      </button>
                     );
                   })}
                 </div>
@@ -168,6 +196,7 @@ export default function CalendarPage() {
           </div>
           <Button
             icon={<RightOutlined />}
+            aria-label="下个月"
             onClick={() => load(nextMonth)}
             style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}
           />
@@ -200,7 +229,17 @@ export default function CalendarPage() {
                     day.isToday ? 'cal-day--today' : '',
                     day.past && !day.hasEvent ? 'cal-day--past' : '',
                   ].filter(Boolean).join(' ')}
+                  role={canClick ? 'button' : undefined}
+                  tabIndex={canClick ? 0 : undefined}
+                  aria-label={canClick ? `${day.date} ${label} ${day.registered}/${day.capacity}` : undefined}
                   onClick={() => canClick && navigate(`/date/${day.date}`)}
+                  onKeyDown={(e) => {
+                    if (!canClick) return;
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate(`/date/${day.date}`);
+                    }
+                  }}
                 >
                   <div className={`cal-day__num${day.isToday ? ' cal-day__num--today' : ''}`}>
                     {day.day}

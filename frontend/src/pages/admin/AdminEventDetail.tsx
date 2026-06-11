@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Table, Tag, Button, Space, message, Modal, Spin, Descriptions, Input, Popconfirm, Progress } from 'antd';
-import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, DeleteOutlined, PlayCircleOutlined, StopOutlined, PlusOutlined, CloseOutlined, LoadingOutlined } from '@ant-design/icons';
+import { Table, Tag, Button, message, Modal, Spin, Descriptions, Input, Popconfirm, Progress } from 'antd';
+import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, DeleteOutlined, PlayCircleOutlined, StopOutlined, PlusOutlined, CloseOutlined, LoadingOutlined, WarningOutlined } from '@ant-design/icons';
 import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, adminGetRankingStatus, adminStartEvent, adminEndEvent, adminManualRegister, adminRemoveRegistration, type AdminEventDetailData, type RankingStatusData } from '../../api';
 import { formatDateTime } from '../../utils';
 import CompactRankingTable from '../../components/CompactRankingTable';
@@ -227,24 +227,28 @@ export default function AdminEventDetail() {
           </Descriptions>
         </div>
 
-        <Space wrap style={{ marginBottom: 20 }}>
-          <Button icon={<DownloadOutlined />} onClick={() => window.open(`/api/admin/events/${date}/export`, '_blank')}>导出 CSV</Button>
-          <Button onClick={() => navigate(`/admin/events/${date}/edit`)}>编辑活动</Button>
-          {!ev.actualStart && <Button icon={<PlayCircleOutlined />} onClick={handleStart}>记录开始时间</Button>}
-          {!ev.actualEnd && <Button icon={<StopOutlined />} onClick={handleEnd}>记录结束时间</Button>}
-          {pubgEnabled && (
-            <Button
-              icon={rankingCalc.status === 'calculating' ? <LoadingOutlined /> : <ReloadOutlined />}
-              onClick={handleRefreshRankings}
-              loading={false}
-              disabled={rankingCalc.status === 'calculating'}
-            >
-              {rankingCalc.status === 'calculating' ? '计算中…' : '重新计算战绩'}
-            </Button>
-          )}
-          {!ev.ended && <Button icon={<ClearOutlined />} danger onClick={handleClear}>清空报名</Button>}
-          <Button icon={<DeleteOutlined />} danger type="primary" onClick={handleDelete}>删除活动</Button>
-        </Space>
+        <div className="admin-action-panel">
+          <div className="admin-action-group">
+            <Button icon={<DownloadOutlined />} onClick={() => window.open(`/api/admin/events/${date}/export`, '_blank')}>导出 CSV</Button>
+            <Button onClick={() => navigate(`/admin/events/${date}/edit`)}>编辑活动</Button>
+            {!ev.actualStart && <Button icon={<PlayCircleOutlined />} onClick={handleStart}>记录开始时间</Button>}
+            {!ev.actualEnd && <Button icon={<StopOutlined />} onClick={handleEnd}>记录结束时间</Button>}
+            {pubgEnabled && (
+              <Button
+                icon={rankingCalc.status === 'calculating' ? <LoadingOutlined /> : <ReloadOutlined />}
+                onClick={handleRefreshRankings}
+                loading={false}
+                disabled={rankingCalc.status === 'calculating'}
+              >
+                {rankingCalc.status === 'calculating' ? '计算中…' : '重新计算战绩'}
+              </Button>
+            )}
+          </div>
+          <div className="admin-action-group admin-action-group--danger">
+            {!ev.ended && <Button icon={<ClearOutlined />} danger onClick={handleClear}>清空报名</Button>}
+            <Button icon={<DeleteOutlined />} danger type="primary" onClick={handleDelete}>删除活动</Button>
+          </div>
+        </div>
 
         {/* Teams & Rankings */}
         <div className="g-card" style={{ marginBottom: 16 }}>
@@ -308,7 +312,7 @@ export default function AdminEventDetail() {
 
           {pubgEnabled && rankingCalc.status === 'done' && rankingCalc.phase === 'partial_ready' && (
             <div style={{ margin: '12px 0 8px', fontSize: 12, color: '#faad14' }}>
-              ⚠️ 部分场次的遥测数据缺失，承伤 / 换血比 / 命中效可能不完整。
+              <WarningOutlined style={{ marginRight: 6 }} />部分场次的遥测数据缺失，承伤 / 换血比 / 命中效可能不完整。
             </div>
           )}
 
@@ -377,14 +381,14 @@ function SlotRow({ slot, date, onRefresh }: SlotRowProps) {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+    <div className="admin-slot-row">
       <span style={{ color: 'var(--text-dim)', width: 20, fontSize: 12 }}>{slot.slotNo}</span>
       {slot.filled ? (
         <>
           <span style={{ color: 'var(--text)', flex: 1 }}>{slot.name}</span>
           <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{slot.phone}</span>
           <Popconfirm title={`确定移除 ${slot.name}？`} onConfirm={handleRemove} okText="移除" cancelText="取消" okButtonProps={{ danger: true }}>
-            <Button size="small" type="text" danger icon={<CloseOutlined />} style={{ fontSize: 11 }} />
+            <Button size="small" type="text" danger icon={<CloseOutlined />} aria-label={`移除 ${slot.name}`} style={{ fontSize: 11 }} />
           </Popconfirm>
         </>
       ) : editing ? (

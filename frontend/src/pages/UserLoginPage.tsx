@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Form, Input, Button, message, Checkbox } from 'antd';
-import { MobileOutlined, LockOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, MobileOutlined, LockOutlined, StarOutlined } from '@ant-design/icons';
 import { userLogin, userMe } from '../api';
 
 const REMEMBER_LOGIN_KEY = 'pubg-queue:user-login';
@@ -19,9 +19,12 @@ function getRememberedLogin(): LoginValues {
       return { phone: '', password: '', remember: false };
     }
     const data = JSON.parse(raw) as Partial<LoginValues>;
+    if (typeof data.password === 'string') {
+      localStorage.setItem(REMEMBER_LOGIN_KEY, JSON.stringify({ phone: data.phone || '' }));
+    }
     return {
       phone: typeof data.phone === 'string' ? data.phone : '',
-      password: typeof data.password === 'string' ? data.password : '',
+      password: '',
       remember: true,
     };
   } catch {
@@ -34,7 +37,6 @@ function saveRememberedLogin(values: LoginValues) {
     if (values.remember) {
       localStorage.setItem(REMEMBER_LOGIN_KEY, JSON.stringify({
         phone: values.phone,
-        password: values.password,
       }));
       return;
     }
@@ -81,16 +83,12 @@ export default function UserLoginPage() {
   return (
     <div className="auth-wrap">
       <div className="auth-box">
-        {/* Logo / brand */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 12 }}>
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-          </svg>
+          <StarOutlined style={{ color: 'var(--primary)', fontSize: 40, marginBottom: 12 }} />
           <div className="page-title page-title--lg" style={{ marginBottom: 6 }}>用户登录</div>
           <div className="section-label" style={{ color: 'var(--text-dim)' }}>PLAYER AUTHENTICATION</div>
         </div>
 
-        {/* Card */}
         <div className="g-card g-card--accent">
           <p style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', marginBottom: 20 }}>
             首次使用将自动注册账号
@@ -101,7 +99,7 @@ export default function UserLoginPage() {
               label="手机号"
               rules={[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号' }]}
             >
-              <Input prefix={<MobileOutlined style={{ color: 'var(--text-dim)' }} />} placeholder="手机号" maxLength={11} size="large" />
+              <Input prefix={<MobileOutlined style={{ color: 'var(--text-dim)' }} />} placeholder="手机号" maxLength={11} size="large" autoComplete="tel" />
             </Form.Item>
             <Form.Item
               name="password"
@@ -109,10 +107,10 @@ export default function UserLoginPage() {
               rules={[{ required: true, min: 6, message: '密码至少6位' }]}
               style={{ marginBottom: 8 }}
             >
-              <Input.Password prefix={<LockOutlined style={{ color: 'var(--text-dim)' }} />} placeholder="密码（至少6位）" size="large" />
+              <Input.Password prefix={<LockOutlined style={{ color: 'var(--text-dim)' }} />} placeholder="密码（至少6位）" size="large" autoComplete="current-password" />
             </Form.Item>
             <Form.Item name="remember" valuePropName="checked" style={{ marginBottom: 20 }}>
-              <Checkbox>记住密码</Checkbox>
+              <Checkbox>记住手机号</Checkbox>
             </Form.Item>
             <Button type="primary" htmlType="submit" loading={loading} block size="large">
               登录 / 注册
@@ -121,7 +119,7 @@ export default function UserLoginPage() {
         </div>
 
         <div style={{ textAlign: 'center', marginTop: 20 }}>
-          <button className="page-footer__link" onClick={() => navigate('/')}>← 返回首页</button>
+          <button className="page-footer__link" onClick={() => navigate('/')}><ArrowLeftOutlined /> 返回首页</button>
         </div>
       </div>
     </div>

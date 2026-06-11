@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Input, Button, message } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, UserOutlined, LockOutlined } from '@ant-design/icons';
 import { adminLogin, adminCheck } from '../../api';
 
 export default function AdminLogin() {
@@ -31,10 +31,7 @@ export default function AdminLogin() {
     <div className="auth-wrap">
       <div className="auth-box">
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 12 }}>
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
+          <LockOutlined style={{ color: 'var(--primary)', fontSize: 36, marginBottom: 12 }} />
           <div className="page-title page-title--lg" style={{ marginBottom: 6 }}>管理后台</div>
           <div className="section-label" style={{ color: 'var(--text-dim)' }}>ADMIN COMMAND CENTER</div>
         </div>
@@ -54,7 +51,7 @@ export default function AdminLogin() {
         </div>
 
         <div style={{ textAlign: 'center', marginTop: 20 }}>
-          <button className="page-footer__link" onClick={() => navigate('/')}>← 返回首页</button>
+          <button className="page-footer__link" onClick={() => navigate('/')}><ArrowLeftOutlined /> 返回首页</button>
         </div>
       </div>
     </div>
