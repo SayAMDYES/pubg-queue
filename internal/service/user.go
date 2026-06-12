@@ -82,6 +82,35 @@ func GetUserGameNames(db *sql.DB, userID int64) ([]string, error) {
 	return names, nil
 }
 
+// ChangePassword 验证旧密码后更新为新密码。
+func ChangePassword(db *sql.DB, userID int64, oldPassword, newPassword string) error {
+	if len(newPassword) < 6 {
+		return fmt.Errorf("password_too_short")
+	}
+
+	var hash string
+	if err := db.QueryRow(`SELECT password_hash FROM users WHERE id=?`, userID).Scan(&hash); err == sql.ErrNoRows {
+		return fmt.Errorf("user_not_found")
+	} else if err != nil {
+		return fmt.Errorf("query user: %w", err)
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(oldPassword)); err != nil {
+		return fmt.Errorf("wrong_password")
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+
+	_, err = db.Exec(
+		`UPDATE users SET password_hash=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`,
+		string(newHash), userID,
+	)
+	return err
+}
+
 // UpsertGameName 记录或更新用户使用的游戏昵称（用于下拉历史）。
 func UpsertGameName(db *sql.DB, userID int64, gameName string) error {
 	_, err := db.Exec(`

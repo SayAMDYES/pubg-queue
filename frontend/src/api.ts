@@ -338,6 +338,9 @@ export const userLogout = () =>
 export const userMe = () =>
   request.get<unknown, ApiResponse<UserMeData>>('/user/me');
 
+export const userChangePassword = (data: { oldPassword: string; newPassword: string }) =>
+  request.post<unknown, ApiResponse<null>>('/user/change-password', data);
+
 // ─── 战绩查询 ─────────────────────────────────────────────────────────────────
 
 export interface PlayerStatsOverview {

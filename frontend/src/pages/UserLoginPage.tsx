@@ -118,7 +118,8 @@ export default function UserLoginPage() {
           </Form>
         </div>
 
-        <div style={{ textAlign: 'center', marginTop: 20 }}>
+        <div style={{ textAlign: 'center', marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button className="page-footer__link" onClick={() => navigate('/change-password')}>🔑 修改密码</button>
           <button className="page-footer__link" onClick={() => navigate('/')}><ArrowLeftOutlined /> 返回首页</button>
         </div>
       </div>

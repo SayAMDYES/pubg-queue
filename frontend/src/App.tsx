@@ -11,6 +11,7 @@ import AdminEventForm from './pages/admin/AdminEventForm';
 import AdminEventDetail from './pages/admin/AdminEventDetail';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminUserEdit from './pages/admin/AdminUserEdit';
+import ChangePasswordPage from './pages/ChangePasswordPage';
 
 function App() {
   return (
@@ -84,6 +85,7 @@ function App() {
           <Route path="/date/:date" element={<EventDetailPage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/login" element={<UserLoginPage />} />
+          <Route path="/change-password" element={<ChangePasswordPage />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/events/new" element={<AdminEventForm />} />

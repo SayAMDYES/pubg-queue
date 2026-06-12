@@ -428,6 +428,49 @@ func UserMeHandler(db *sql.DB, cfg *config.Config) http.HandlerFunc {
 	}
 }
 
+// UserChangePasswordHandler 修改当前登录用户的密码
+func UserChangePasswordHandler(db *sql.DB, cfg *config.Config, bans interface {
+	IsBanned(string) bool
+	RecordFailure(string)
+	ClearFailures(string)
+}) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ip := getClientIP(r)
+		userID, userPhone := middleware.GetUserSession(r, db, cfg)
+		if userID == 0 {
+			Error(w, http.StatusUnauthorized, "not_logged_in")
+			return
+		}
+
+		if bans.IsBanned(ip) || bans.IsBanned(userPhone) {
+			Error(w, http.StatusTooManyRequests, "您的账号或网络已被暂时封禁（24小时），请稍后再试。")
+			return
+		}
+
+		var req struct {
+			OldPassword string `json:"oldPassword"`
+			NewPassword string `json:"newPassword"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			Error(w, http.StatusBadRequest, "请求格式错误")
+			return
+		}
+
+		if err := service.ChangePassword(db, userID, req.OldPassword, req.NewPassword); err != nil {
+			if err.Error() == "wrong_password" {
+				bans.RecordFailure(ip)
+				bans.RecordFailure(userPhone)
+			}
+			Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		bans.ClearFailures(ip)
+		bans.ClearFailures(userPhone)
+		Success(w, nil)
+	}
+}
+
 // RegisterRequest 报名请求
 type RegisterRequest struct {
 	Name string `json:"name"`

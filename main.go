@@ -67,6 +67,7 @@ func main() {
 	generalRL := middleware.NewRateLimiter(100)
 	registerRL := middleware.NewRateLimiter(cfg.RateLimitRegister)
 	leaveRL := middleware.NewRateLimiter(cfg.RateLimitLeave)
+	loginRL := middleware.NewRateLimiter(5)
 
 	r.Use(generalRL.RateLimit)
 
@@ -82,9 +83,10 @@ func main() {
 		r.Get("/stats/seasons", api.SeasonsHandler(cfg))
 
 		// 用户账号（前台登录/登出/查询）
-		r.Post("/user/login", api.UserLoginHandler(db, cfg, bans))
+		r.With(loginRL.RateLimit).Post("/user/login", api.UserLoginHandler(db, cfg, bans))
 		r.Post("/user/logout", api.UserLogoutHandler(db, cfg))
 		r.Get("/user/me", api.UserMeHandler(db, cfg))
+		r.With(loginRL.RateLimit).Post("/user/change-password", api.UserChangePasswordHandler(db, cfg, bans))
 
 		adminH := api.NewAdminAPI(db, cfg, authMW)
 		r.Route("/admin", func(r chi.Router) {
