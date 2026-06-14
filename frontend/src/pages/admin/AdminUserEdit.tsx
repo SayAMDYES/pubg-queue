@@ -1,9 +1,28 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Form, Input, Button, Tag, Table, message, Spin, Modal } from 'antd';
+import { Form, Input, Button, Tag, Table, message, Spin, Modal, AutoComplete } from 'antd';
 import { ArrowLeftOutlined, LockOutlined, DeleteOutlined, EditOutlined, CheckOutlined, CloseOutlined, PlusOutlined } from '@ant-design/icons';
-import { adminGetUser, adminUpdateUser, adminDeleteUser, adminResetPassword, adminAddGameName, adminUpdateGameName, adminDeleteGameName, type AdminUserDetail } from '../../api';
-import { formatDateTime } from '../../utils';
+import { adminGetUser, adminUpdateUser, adminDeleteUser, adminResetPassword, adminAddGameName, adminUpdateGameName, adminDeleteGameName, adminListGameNames, type AdminUserDetail, type AdminGameNameStat } from '../../api';
+import { formatDateTime, fuzzyScore } from '../../utils';
+
+// 对游戏名候选按输入做近似匹配排序：先按相关度，同分按使用热度。
+function rankGameNames(
+  query: string,
+  pool: AdminGameNameStat[],
+  exclude: Set<string>,
+  limit: number,
+): AdminGameNameStat[] {
+  const q = query.trim();
+  if (!q) return [];
+  const scored: { s: AdminGameNameStat; score: number }[] = [];
+  for (const s of pool) {
+    if (exclude.has(s.name)) continue;
+    const score = fuzzyScore(q, s.name);
+    if (score >= 0) scored.push({ s, score });
+  }
+  scored.sort((a, b) => b.score - a.score || b.s.total - a.s.total);
+  return scored.slice(0, limit).map((x) => x.s);
+}
 
 const histStatusLabel: Record<string, string> = { assigned: '已分配', waitlist: '候补', cancelled: '已取消' };
 const histStatusColor: Record<string, string> = { assigned: 'green', waitlist: 'orange', cancelled: 'red' };
@@ -21,6 +40,8 @@ export default function AdminUserEdit() {
   const [editingValue, setEditingValue] = useState('');
   const [editingLoading, setEditingLoading] = useState(false);
   const [addingLoading, setAddingLoading] = useState(false);
+  const [candidates, setCandidates] = useState<AdminGameNameStat[]>([]);
+  const [addInput, setAddInput] = useState('');
 
   const uid = parseInt(id || '0', 10);
 
@@ -40,6 +61,13 @@ export default function AdminUserEdit() {
   };
 
   useEffect(() => { load(); }, [uid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 加载全部用户已有游戏名作为近似匹配候选，失败时退化为纯手动输入
+  useEffect(() => {
+    adminListGameNames()
+      .then((res) => setCandidates(res.data))
+      .catch(() => { /* 候选加载失败不影响手动输入 */ });
+  }, []);
 
   const startEdit = (gn: string) => {
     setEditingName(gn);
@@ -93,6 +121,7 @@ export default function AdminUserEdit() {
       await adminAddGameName(uid, name);
       message.success('游戏名已添加');
       addForm.resetFields();
+      setAddInput('');
       load();
     } catch (err: unknown) {
       message.error(err instanceof Error ? err.message : '添加失败');
@@ -147,6 +176,20 @@ export default function AdminUserEdit() {
   }
 
   const { user, regHistory } = data;
+
+  // 近似匹配推荐候选：排除当前用户已有游戏名（重复添加会被唯一约束拒绝）
+  const ownNames = new Set(user.gameNames);
+  const addOptions = rankGameNames(addInput, candidates, ownNames, 8).map((s) => ({
+    value: s.name,
+    label: (
+      <span>
+        {s.name}
+        {s.users > 1 && (
+          <span style={{ color: 'var(--text-muted)', marginLeft: 8, fontSize: 12 }}>{s.users} 人使用</span>
+        )}
+      </span>
+    ),
+  }));
 
   const histColumns = [
     { title: '活动日期', dataIndex: 'eventDate', key: 'eventDate' },
@@ -249,7 +292,15 @@ export default function AdminUserEdit() {
                   { pattern: /^[\w\u4e00-\u9fff\u3400-\u4dbf -]{1,20}$/, message: '游戏名仅限中英文、数字、下划线、连字符、空格，最长20字符' },
                 ]}
               >
-                <Input placeholder="新增游戏名" maxLength={20} style={{ width: 180 }} />
+                <AutoComplete
+                  options={addOptions}
+                  filterOption={false}
+                  onSearch={setAddInput}
+                  notFoundContent={null}
+                  placeholder="新增游戏名（可从已有中选择或直接输入）"
+                  maxLength={20}
+                  style={{ width: 280 }}
+                />
               </Form.Item>
               <Form.Item>
                 <Button type="default" htmlType="submit" icon={<PlusOutlined />} loading={addingLoading}>添加</Button>

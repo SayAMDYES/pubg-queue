@@ -122,3 +122,34 @@ func UpsertGameName(db *sql.DB, userID int64, gameName string) error {
 	`, userID, gameName)
 	return err
 }
+
+// GameNameStat 汇总某个游戏名在全部用户中的使用情况，用于后台新增游戏名时的近似匹配推荐。
+type GameNameStat struct {
+	Name     string
+	Total    int
+	Users    int
+	LastUsed string
+}
+
+// ListAllGameNames 按游戏名聚合全部用户的使用记录，按总使用次数倒序返回。
+func ListAllGameNames(db *sql.DB) ([]GameNameStat, error) {
+	rows, err := db.Query(`
+		SELECT game_name, COALESCE(SUM(used_count), 0), COUNT(DISTINCT user_id), MAX(last_used_at)
+		FROM user_game_names
+		GROUP BY game_name
+		ORDER BY SUM(used_count) DESC, MAX(last_used_at) DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := make([]GameNameStat, 0)
+	for rows.Next() {
+		var s GameNameStat
+		if err := rows.Scan(&s.Name, &s.Total, &s.Users, &s.LastUsed); err == nil {
+			stats = append(stats, s)
+		}
+	}
+	return stats, nil
+}

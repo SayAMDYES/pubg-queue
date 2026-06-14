@@ -321,6 +321,15 @@ export const adminDeleteUser = (id: number) =>
 export const adminResetPassword = (id: number, newPassword: string) =>
   request.post<unknown, ApiResponse<{ msg: string }>>(`/admin/users/${id}/reset-password`, { newPassword });
 
+export interface AdminGameNameStat {
+  name: string;
+  total: number;
+  users: number;
+}
+
+export const adminListGameNames = () =>
+  request.get<unknown, ApiResponse<AdminGameNameStat[]>>('/admin/game-names');
+
 // ─── 用户账号（前台） ──────────────────────────────────────────────────────────
 
 export interface UserMeData {

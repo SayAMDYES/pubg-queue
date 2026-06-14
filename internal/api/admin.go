@@ -786,6 +786,26 @@ func (a *AdminAPI) EndEvent(w http.ResponseWriter, r *http.Request) {
 	Success(w, map[string]string{"actualEnd": now})
 }
 
+// ListGameNames 返回全部游戏名汇总，供后台新增游戏名时做近似匹配推荐。
+func (a *AdminAPI) ListGameNames(w http.ResponseWriter, r *http.Request) {
+	stats, err := service.ListAllGameNames(a.db)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "数据库错误")
+		return
+	}
+
+	type Row struct {
+		Name  string `json:"name"`
+		Total int    `json:"total"`
+		Users int    `json:"users"`
+	}
+	rows := make([]Row, 0, len(stats))
+	for _, s := range stats {
+		rows = append(rows, Row{Name: s.Name, Total: s.Total, Users: s.Users})
+	}
+	Success(w, rows)
+}
+
 // ListUsers 用户列表
 func (a *AdminAPI) ListUsers(w http.ResponseWriter, r *http.Request) {
 	type UserRow struct {
