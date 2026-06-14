@@ -75,6 +75,35 @@ func smallLobbyCliffEntries() []RankEntry {
 	}
 }
 
+func combatWeightedLobbyEntries() []RankEntry {
+	return []RankEntry{
+		{
+			RegID: 93, GameName: "Dunchu-Hongchen", Matches: 26, EventMatches: 26,
+			Kills: 44, Deaths: 26, Assists: 11, DBNOs: 36, Revives: 8, HeadshotKills: 9, Top10Count: 11,
+			TotalDamage: 5574.291716, TimeAlive: 17151,
+			TelemetryMatches: 26, TelemetryDamage: 5625.170865267515, DamageTaken: 5016.579003453255, FireCount: 7660,
+		},
+		{
+			RegID: 94, GameName: "AMD__________YES", Matches: 26, EventMatches: 26,
+			Kills: 28, Deaths: 26, Assists: 6, DBNOs: 27, Revives: 7, HeadshotKills: 6, Top10Count: 11,
+			TotalDamage: 3196.0149810000003, TimeAlive: 14769,
+			TelemetryMatches: 26, TelemetryDamage: 3535.601718902588, DamageTaken: 5335.929518520832, FireCount: 3370,
+		},
+		{
+			RegID: 95, GameName: "Jesus331", Matches: 26, EventMatches: 26,
+			Kills: 25, Deaths: 26, Assists: 14, DBNOs: 20, Revives: 4, HeadshotKills: 2, Top10Count: 11,
+			TotalDamage: 4664.7362219999995, TimeAlive: 15151,
+			TelemetryMatches: 26, TelemetryDamage: 4767.756543874741, DamageTaken: 5432.413270533085, FireCount: 6880,
+		},
+		{
+			RegID: 96, GameName: "theming-0315", Matches: 26, EventMatches: 26,
+			Kills: 22, Deaths: 26, Assists: 10, DBNOs: 27, Revives: 5, HeadshotKills: 5, Top10Count: 11,
+			TotalDamage: 3386.8569320000006, TimeAlive: 16378,
+			TelemetryMatches: 26, TelemetryDamage: 3578.454705119133, DamageTaken: 4504.886980722891, FireCount: 3360,
+		},
+	}
+}
+
 func TestFinalizeRankings_AssignsTagsAndScores(t *testing.T) {
 	entries := sampleEntries()
 	FinalizeRankings(entries, "full_ready")
@@ -95,7 +124,7 @@ func TestFinalizeRankings_AssignsTagsAndScores(t *testing.T) {
 			t.Errorf("%s: combat score out of [0,100]: %.2f", e.GameName, e.CombatScore)
 		}
 		if e.EfficiencyScore < 0 || e.EfficiencyScore > 100 {
-			t.Errorf("%s: efficiency score out of [0,100]: %.2f", e.GameName, e.EfficiencyScore)
+			t.Errorf("%s: pressure score out of [0,100]: %.2f", e.GameName, e.EfficiencyScore)
 		}
 		if e.SurvivalScore < 0 || e.SurvivalScore > 100 {
 			t.Errorf("%s: survival score out of [0,100]: %.2f", e.GameName, e.SurvivalScore)
@@ -130,9 +159,40 @@ func TestFinalizeRankings_AssignsTagsAndScores(t *testing.T) {
 	if !findTagCode(byName["Ace"].Tags, TagMVP) {
 		t.Errorf("Ace as rank #1 should carry MVP tag, got %+v", byName["Ace"].Tags)
 	}
-	// Box 应该综合分最低。
-	if byName["Box"].RankNo != 4 {
-		t.Errorf("expected Box at rank 4, got rank %d", byName["Box"].RankNo)
+	// Box 虽然生存差，但击杀、均伤、K/D 和击倒都高于 Reporter，不应被纯生存项压到最后。
+	if byName["Box"].RankNo >= byName["Reporter"].RankNo {
+		t.Errorf("expected Box to outrank Reporter under combat-weighted scoring, got Box #%d Reporter #%d",
+			byName["Box"].RankNo, byName["Reporter"].RankNo)
+	}
+}
+
+func TestFinalizeRankings_PrioritizesCombatPressureOverRawSurvival(t *testing.T) {
+	entries := combatWeightedLobbyEntries()
+	FinalizeRankings(entries, "full_ready")
+
+	wantOrder := []string{"Dunchu-Hongchen", "Jesus331", "AMD__________YES", "theming-0315"}
+	for i, want := range wantOrder {
+		if entries[i].GameName != want {
+			t.Fatalf("rank %d expected %s, got %s", i+1, want, entries[i].GameName)
+		}
+	}
+
+	byName := make(map[string]RankEntry, len(entries))
+	for _, e := range entries {
+		byName[e.GameName] = e
+	}
+
+	jesus := byName["Jesus331"]
+	theming := byName["theming-0315"]
+	if theming.SurvivalScore <= jesus.SurvivalScore {
+		t.Fatalf("test setup expected theming to have stronger raw survival: %.2f <= %.2f", theming.SurvivalScore, jesus.SurvivalScore)
+	}
+	if jesus.CombatScore <= theming.CombatScore || jesus.EfficiencyScore <= theming.EfficiencyScore {
+		t.Fatalf("Jesus should lead theming on combat and pressure: combat %.2f/%.2f pressure %.2f/%.2f",
+			jesus.CombatScore, theming.CombatScore, jesus.EfficiencyScore, theming.EfficiencyScore)
+	}
+	if jesus.Score <= theming.Score {
+		t.Fatalf("combat and pressure should outrank survival-only advantage: %.2f <= %.2f", jesus.Score, theming.Score)
 	}
 }
 
@@ -145,8 +205,8 @@ func TestFinalizeRankings_CompressesSmallLobbyScoreCliff(t *testing.T) {
 	}
 
 	gap12 := entries[0].Score - entries[1].Score
-	if gap12 >= 35 {
-		t.Fatalf("expected top-two score gap to be compressed below 35, got %.2f", gap12)
+	if gap12 >= 40 {
+		t.Fatalf("expected top-two score gap to be compressed below 40, got %.2f", gap12)
 	}
 
 	if entries[1].Score < 40 {
@@ -292,9 +352,9 @@ func TestFinalizeRankings_AnalysisStatusBasicReadyKeepsTagsButNoTelemetry(t *tes
 		if e.AnalysisStatus != "basic_ready" {
 			t.Errorf("%s: expected basic_ready, got %q", e.GameName, e.AnalysisStatus)
 		}
-		// 没有 telemetry → 效率分应退化为 ADR/KDA 的相对值，但仍应 > 0 或 = 0，不是 NaN
+		// 没有 telemetry → 承压分应退化为 ADR/K/D 的相对值，但仍应 > 0 或 = 0，不是 NaN
 		if e.EfficiencyScore < 0 || e.EfficiencyScore > 100 {
-			t.Errorf("%s: efficiency score out of range without telemetry: %.2f", e.GameName, e.EfficiencyScore)
+			t.Errorf("%s: pressure score out of range without telemetry: %.2f", e.GameName, e.EfficiencyScore)
 		}
 	}
 }

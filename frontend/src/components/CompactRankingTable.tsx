@@ -241,10 +241,10 @@ const metricTips = {
   timeAlive: { label: '总生存时长', tip: '活动期间所有参与场次的生存时间总和' },
   totalDamage: { label: '总伤害', tip: '活动期间累计造成的总伤害' },
   totalDamageTaken: { label: '总承伤', tip: '活动期间累计承受的总伤害' },
-  combatScore: { label: '战斗评分', tip: '基于 ADR、KPG、K/D、DBNO 和爆头表现计算的战斗分' },
-  efficiencyScore: { label: '效率评分', tip: '基于换血比、命中效、ADR 和 K/D 计算的效率分' },
-  survivalScore: { label: '生存评分', tip: '基于生存时间、前十率和死亡率反向计算的生存分' },
-  teamScore: { label: '团队评分', tip: '基于助攻、拉人、伤害和击倒等团队贡献计算的团队分' },
+  combatScore: { label: '战斗评分', tip: '基于 K/D、ADR、KPG、击倒和爆头表现计算的战斗分' },
+  efficiencyScore: { label: '承压评分', tip: '基于有效承伤、换血比、命中效和前排参与计算的对抗承压分' },
+  survivalScore: { label: '生存评分', tip: '基于生存时间、前十率和死亡率反向计算，并按输出参与度修正' },
+  teamScore: { label: '团队评分', tip: '基于助攻、拉人、击倒协同和击倒转化计算的团队分' },
   eventMatches: { label: '活动总场次', tip: '本次活动被判定为有效样本的总局数' },
 } satisfies Record<string, MetricDef>;
 
@@ -374,7 +374,7 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
           ),
         },
         {
-          title: titleWithTip('评分', '综合战斗、效率、生存指标的加权得分'),
+          title: titleWithTip('评分', '综合战斗、承压、协作和生存指标的加权得分'),
           dataIndex: 'Score',
           key: 'score',
           width: 96,

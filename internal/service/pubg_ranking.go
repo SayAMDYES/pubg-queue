@@ -185,6 +185,31 @@ func compressedNorm(value, min, max float64) float64 {
 	return math.Cbrt(minMaxNorm(value, min, max))
 }
 
+func cappedAvgRatio(value, avg float64) float64 {
+	if avg <= 0 {
+		return 1
+	}
+	if value <= 0 {
+		return 0
+	}
+	ratio := value / avg
+	if ratio > 1 {
+		return 1
+	}
+	return ratio
+}
+
+func outputReadiness(e RankEntry, avg teamAverages) float64 {
+	return 0.55*cappedAvgRatio(e.AvgDamage, avg.avgADR) +
+		0.30*cappedAvgRatio(e.KDA, avg.avgKDA) +
+		0.15*cappedAvgRatio(e.KPG, avg.avgKPG)
+}
+
+func survivalContributionGate(e RankEntry, avg teamAverages) float64 {
+	readiness := math.Max(cappedAvgRatio(e.AvgDamage, avg.avgADR), cappedAvgRatio(e.KPG, avg.avgKPG))
+	return 0.45 + 0.55*readiness
+}
+
 // rangeOf 取队内某指标的最小最大值，用于做相对归一化。
 func rangeOf(entries []RankEntry, fn func(RankEntry) float64, requireTelemetry bool) (float64, float64) {
 	min := math.MaxFloat64
@@ -219,6 +244,7 @@ func computeSubScores(entries []RankEntry) {
 		return
 	}
 
+	avg := computeTeamAverages(entries)
 	adrMin, adrMax := rangeOf(entries, func(e RankEntry) float64 { return e.AvgDamage }, false)
 	kpgMin, kpgMax := rangeOf(entries, func(e RankEntry) float64 { return e.KPG }, false)
 	kdaMin, kdaMax := rangeOf(entries, func(e RankEntry) float64 { return e.KDA }, false)
@@ -235,8 +261,15 @@ func computeSubScores(entries []RankEntry) {
 		return 0
 	}, false)
 
+	dmgTakenMin, dmgTakenMax := rangeOf(entries, func(e RankEntry) float64 { return e.AvgDamageTaken }, true)
 	tradeMin, tradeMax := rangeOf(entries, func(e RankEntry) float64 { return e.TradeRatio }, true)
 	hitEffMin, hitEffMax := rangeOf(entries, func(e RankEntry) float64 { return e.HitEfficiency }, true)
+	fireMin, fireMax := rangeOf(entries, func(e RankEntry) float64 {
+		if e.TelemetryMatches > 0 {
+			return float64(e.FireCount) / float64(e.TelemetryMatches)
+		}
+		return 0
+	}, true)
 
 	survMin, survMax := rangeOf(entries, func(e RankEntry) float64 {
 		if e.Matches > 0 {
@@ -269,6 +302,12 @@ func computeSubScores(entries []RankEntry) {
 		}
 		return 0
 	}, false)
+	knockConversionMin, knockConversionMax := rangeOf(entries, func(e RankEntry) float64 {
+		if e.DBNOs > 0 {
+			return float64(e.Kills) / float64(e.DBNOs)
+		}
+		return 0
+	}, false)
 
 	for i := range entries {
 		e := &entries[i]
@@ -281,55 +320,57 @@ func computeSubScores(entries []RankEntry) {
 			continue
 		}
 
-		// CombatScore: ADR 30%, KPG 20%, K/D 20%, DBNO/match 20%, Headshot/match 10%
+		// CombatScore: K/D 30%, ADR 25%, KPG 20%, DBNO/match 15%, Headshot/match 10%.
 		dbnosPM := float64(e.DBNOs) / float64(e.Matches)
 		hsPM := float64(e.HeadshotKills) / float64(e.Matches)
-		combat := 30*compressedNorm(e.AvgDamage, adrMin, adrMax) +
+		combat := 30*compressedNorm(e.KDA, kdaMin, kdaMax) +
+			25*compressedNorm(e.AvgDamage, adrMin, adrMax) +
 			20*compressedNorm(e.KPG, kpgMin, kpgMax) +
-			20*compressedNorm(e.KDA, kdaMin, kdaMax) +
-			20*compressedNorm(dbnosPM, dbnosMin, dbnosMax) +
+			15*compressedNorm(dbnosPM, dbnosMin, dbnosMax) +
 			10*compressedNorm(hsPM, hsMin, hsMax)
 		e.CombatScore = combat
 
-		// EfficiencyScore: 换血比 35%, 命中效 25%, ADR 稳定性近似（用 ADR）20%, 首次接敌效率（缺失，用 trade）20%
-		// 没有 telemetry 时退化为 ADR/KDA 的衍生值，以避免完全 0 分。
-		var efficiency float64
+		// EfficiencyScore 兼容旧字段名，语义为对抗承压：有效承伤、换血、命中效和前排参与。
+		var pressure float64
 		if e.TelemetryMatches > 0 {
-			efficiency = 35*compressedNorm(e.TradeRatio, tradeMin, tradeMax) +
-				25*compressedNorm(e.HitEfficiency, hitEffMin, hitEffMax) +
-				20*compressedNorm(e.AvgDamage, adrMin, adrMax) +
-				20*compressedNorm(e.KDA, kdaMin, kdaMax)
+			firePM := float64(e.FireCount) / float64(e.TelemetryMatches)
+			damageTakenNorm := compressedNorm(e.AvgDamageTaken, dmgTakenMin, dmgTakenMax)
+			effectiveDamageTaken := damageTakenNorm * (0.50 + 0.50*outputReadiness(*e, avg))
+			frontline := 0.55*damageTakenNorm + 0.45*compressedNorm(firePM, fireMin, fireMax)
+			pressure = 40*effectiveDamageTaken +
+				35*compressedNorm(e.TradeRatio, tradeMin, tradeMax) +
+				15*compressedNorm(e.HitEfficiency, hitEffMin, hitEffMax) +
+				10*frontline
 		} else {
-			// 退化：ADR + KDA 各占一半作为粗糙效率分
-			efficiency = 50*compressedNorm(e.AvgDamage, adrMin, adrMax) +
-				50*compressedNorm(e.KDA, kdaMin, kdaMax)
+			pressure = 55*compressedNorm(e.AvgDamage, adrMin, adrMax) +
+				45*compressedNorm(e.KDA, kdaMin, kdaMax)
 		}
-		e.EfficiencyScore = efficiency
+		e.EfficiencyScore = pressure
 
-		// SurvivalScore: 场均生存 45%, 高排名率 25%, 早死率反向 30%
+		// SurvivalScore: 场均生存 40%, 高排名率 30%, 早死率反向 30%，再按输出参与度做门槛修正。
 		survPM := e.TimeAlive / float64(e.Matches)
 		top10Rate := float64(e.Top10Count) / float64(e.Matches)
 		deathRate := float64(e.Deaths) / float64(e.Matches)
-		survival := 45*compressedNorm(survPM, survMin, survMax) +
-			25*compressedNorm(top10Rate, top10Min, top10Max) +
+		survival := 40*compressedNorm(survPM, survMin, survMax) +
+			30*compressedNorm(top10Rate, top10Min, top10Max) +
 			30*(1-compressedNorm(deathRate, deathRateMin, deathRateMax))
-		e.SurvivalScore = survival
+		e.SurvivalScore = survival * survivalContributionGate(*e, avg)
 
-		// TeamScore: 助攻率 25%, 拉人率 25%, 伤害占比 20%, 击倒占比 15%, 击杀参与率 15%
-		// 没有团队总和数据时，用队内 min-max 归一化作为相对值。
+		// TeamScore: 助攻率 35%, 拉人率 30%, 击倒协同 20%, 击倒转化 15%。
 		assistsPM := float64(e.Assists) / float64(e.Matches)
 		revivesPM := float64(e.Revives) / float64(e.Matches)
-		// 伤害占比/击倒占比/击杀参与率 → 用相对量值近似
-		team := 25*compressedNorm(assistsPM, assistsMin, assistsMax) +
-			25*compressedNorm(revivesPM, revivesMin, revivesMax) +
-			20*compressedNorm(e.AvgDamage, adrMin, adrMax) +
-			15*compressedNorm(dbnosPM, dbnosMin, dbnosMax) +
-			15*compressedNorm(e.KPG, kpgMin, kpgMax)
+		knockConversion := 0.0
+		if e.DBNOs > 0 {
+			knockConversion = float64(e.Kills) / float64(e.DBNOs)
+		}
+		team := 35*compressedNorm(assistsPM, assistsMin, assistsMax) +
+			30*compressedNorm(revivesPM, revivesMin, revivesMax) +
+			20*compressedNorm(dbnosPM, dbnosMin, dbnosMax) +
+			15*compressedNorm(knockConversion, knockConversionMin, knockConversionMax)
 		e.TeamScore = team
 
-		// Score 综合分：Combat 30% + Efficiency 25% + Survival 25% + Team 20%。
-		// 让团队和生存表现保留更高权重，避免小样本里输出项把差距拉得过于夸张。
-		e.Score = e.CombatScore*0.30 + e.EfficiencyScore*0.25 + e.SurvivalScore*0.25 + e.TeamScore*0.20
+		// Score 综合分：战斗 45% + 对抗承压 25% + 团队 20% + 生存 10%。
+		e.Score = e.CombatScore*0.45 + e.EfficiencyScore*0.25 + e.TeamScore*0.20 + e.SurvivalScore*0.10
 	}
 }
 

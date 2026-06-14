@@ -285,7 +285,7 @@ export default function TeamPerformanceOverview({ rankings }: TeamPerformanceOve
         <div className="g-card__header">TEAM OVERVIEW / 队伍总览</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 14 }}>
           <OverviewGroup
-            title="战斗效率"
+			title="战斗输出"
             metrics={[
               { label: '队伍评分', value: formatNumber(stats.totalScore, 1), tone: 'gold' },
               { label: '总伤害', value: formatNumber(stats.totalDamage, 0), tone: 'gold' },
