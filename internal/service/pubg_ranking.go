@@ -84,7 +84,7 @@ func makeTag(code string) RankTag {
 	return RankTag{Code: code, Label: code}
 }
 
-// teamAverages 队内均值，用于相对评分。仅统计出勤的玩家。
+// teamAverages 旧版队内均值结构，目前仅保留给 composeComment 的签名与单元测试使用。
 type teamAverages struct {
 	avgADR             float64
 	avgKPG             float64
@@ -100,54 +100,6 @@ type teamAverages struct {
 	avgAssistsPerMatch float64
 	avgTop10Rate       float64
 	hasTelemetry       bool
-}
-
-func computeTeamAverages(entries []RankEntry) teamAverages {
-	var avg teamAverages
-	count := 0
-	telCount := 0
-	for _, e := range entries {
-		if e.Matches <= 0 {
-			continue
-		}
-		count++
-		avg.avgADR += e.AvgDamage
-		avg.avgKPG += e.KPG
-		avg.avgKDA += e.KDA
-		avg.avgTimePerMatch += e.TimeAlive / float64(e.Matches)
-		avg.avgDeathsPerMatch += float64(e.Deaths) / float64(e.Matches)
-		avg.avgDBNOsPerMatch += float64(e.DBNOs) / float64(e.Matches)
-		avg.avgRevivesPerMatch += float64(e.Revives) / float64(e.Matches)
-		avg.avgAssistsPerMatch += float64(e.Assists) / float64(e.Matches)
-		avg.avgTop10Rate += float64(e.Top10Count) / float64(e.Matches)
-
-		if e.TelemetryMatches > 0 {
-			telCount++
-			avg.avgDmgTaken += e.AvgDamageTaken
-			avg.avgTradeRatio += e.TradeRatio
-			avg.avgHitEff += e.HitEfficiency
-			avg.avgFirePerMatch += float64(e.FireCount) / float64(e.TelemetryMatches)
-		}
-	}
-	if count > 0 {
-		avg.avgADR /= float64(count)
-		avg.avgKPG /= float64(count)
-		avg.avgKDA /= float64(count)
-		avg.avgTimePerMatch /= float64(count)
-		avg.avgDeathsPerMatch /= float64(count)
-		avg.avgDBNOsPerMatch /= float64(count)
-		avg.avgRevivesPerMatch /= float64(count)
-		avg.avgAssistsPerMatch /= float64(count)
-		avg.avgTop10Rate /= float64(count)
-	}
-	if telCount > 0 {
-		avg.avgDmgTaken /= float64(telCount)
-		avg.avgTradeRatio /= float64(telCount)
-		avg.avgHitEff /= float64(telCount)
-		avg.avgFirePerMatch /= float64(telCount)
-		avg.hasTelemetry = true
-	}
-	return avg
 }
 
 // computeConfidence 根据出勤场次返回置信度档位。
@@ -166,22 +118,24 @@ func computeConfidence(matches int) string {
 	}
 }
 
-// metricBaseline 指标的社区经验基线（均值 / 标准差）。用于小样本时把队内统计向绝对水平收缩，
-// 使评分不至于在小队伍或同质队伍里退化成纯队内排名。数值为混合段位的粗略经验值，可按需调整。
+// metricBaseline 指标的“普通玩家”绝对基线（均值 / 标准差），评分以此为参照系。
+// 来源：可公开查证的社区口径有限——平均 K/D≈0.95（略低于 1），场均击杀约 1，casual PC 的 ADR 约 150，
+// 局均 20-30 分钟且约四成在前 5 分钟出局；遥测类指标（命中效、换血、承伤）无公开数据，按对称性估算
+// （全体造成伤害之和 = 承受伤害之和，故场均承伤≈ADR，换血≈1）。数值为经验估计，可用真实样本再校准。
 type metricBaseline struct{ mean, std float64 }
 
 var (
 	baseADR        = metricBaseline{150, 70}
-	baseKPG        = metricBaseline{0.8, 0.6}
-	baseKDA        = metricBaseline{1.0, 0.8}
+	baseKPG        = metricBaseline{1.0, 0.8}
+	baseKDA        = metricBaseline{0.95, 0.7}
 	baseDBNOPM     = metricBaseline{1.0, 0.7}
 	baseHSPM       = metricBaseline{0.3, 0.3}
-	baseHitEff     = metricBaseline{0.8, 0.5}
+	baseHitEff     = metricBaseline{1.2, 0.6}
 	baseTrade      = metricBaseline{1.0, 0.6}
-	baseDmgTakenPM = metricBaseline{200, 90}
+	baseDmgTakenPM = metricBaseline{150, 80}
 	baseFirePM     = metricBaseline{150, 90}
-	baseSurvPM     = metricBaseline{700, 300}
-	baseTop10Rate  = metricBaseline{0.35, 0.25}
+	baseSurvPM     = metricBaseline{650, 350}
+	baseTop10Rate  = metricBaseline{0.22, 0.20}
 	baseDeathRate  = metricBaseline{0.9, 0.3}
 	baseAssistsPM  = metricBaseline{0.6, 0.5}
 	baseRevivesPM  = metricBaseline{0.5, 0.5}
@@ -198,56 +152,13 @@ const (
 	wTeamwork   = 0.20
 )
 
-// shrinkPrior 收缩先验强度：有效样本量等于该值时，队内统计与绝对基线各占一半。
-const shrinkPrior = 5.0
-
-// metricStats 计算指标在队内的均值与总体标准差；requireTel 时仅统计有遥测的样本。
-func metricStats(entries []RankEntry, fn func(RankEntry) float64, requireTel bool) (mean, std float64, n int) {
-	var sum float64
-	vals := make([]float64, 0, len(entries))
-	for _, e := range entries {
-		if e.Matches <= 0 {
-			continue
-		}
-		if requireTel && e.TelemetryMatches <= 0 {
-			continue
-		}
-		v := fn(e)
-		vals = append(vals, v)
-		sum += v
-	}
-	n = len(vals)
-	if n == 0 {
-		return 0, 0, 0
-	}
-	mean = sum / float64(n)
-	var ss float64
-	for _, v := range vals {
-		d := v - mean
-		ss += d * d
-	}
-	return mean, math.Sqrt(ss / float64(n)), n
-}
-
-// dimScorer 把队内统计与绝对基线收缩混合后，按“高于均值多少个标准差”给出 0-100 分。
-type dimScorer struct{ mean, std float64 }
-
-func newDimScorer(cohortMean, cohortStd float64, base metricBaseline, n int) dimScorer {
-	w := float64(n) / (float64(n) + shrinkPrior)
-	mean := w*cohortMean + (1-w)*base.mean
-	std := w*cohortStd + (1-w)*base.std
-	if floor := base.std * 0.35; std < floor {
-		std = floor // 方差地板：同质队伍下避免把细小差异放大成噪声
-	}
-	return dimScorer{mean: mean, std: std}
-}
-
-// score 把 +1 个标准差映射到 65 分、+2 个标准差映射到 80 分，并裁剪到 [0,100]。
-func (s dimScorer) score(value float64) float64 {
-	if s.std <= 0 {
+// score 以“普通玩家”基线为参照，按高于均值多少个标准差给 0-100 分：
+// 50=普通水平，+1 个标准差≈65，+2 个标准差≈80；分数表达“比常人高多少”，与同场玩家强弱无关。
+func (b metricBaseline) score(value float64) float64 {
+	if b.std <= 0 {
 		return 50
 	}
-	v := 50 + 15*(value-s.mean)/s.std
+	v := 50 + 15*(value-b.mean)/b.std
 	if v < 0 {
 		return 0
 	}
@@ -271,8 +182,9 @@ func cappedAvgRatio(value, avg float64) float64 {
 	return ratio
 }
 
-func survivalContributionGate(e RankEntry, avg teamAverages) float64 {
-	readiness := math.Max(cappedAvgRatio(e.AvgDamage, avg.avgADR), cappedAvgRatio(e.KPG, avg.avgKPG))
+// survivalContributionGate 按“相对普通玩家的绝对输出”给生存/运营打折，避免纯苟分推高总分。
+func survivalContributionGate(e RankEntry) float64 {
+	readiness := math.Max(cappedAvgRatio(e.AvgDamage, baseADR.mean), cappedAvgRatio(e.KPG, baseKPG.mean))
 	return 0.45 + 0.55*readiness
 }
 
@@ -282,11 +194,6 @@ func perMatchVal(value float64, matches int) float64 {
 		return 0
 	}
 	return value / float64(matches)
-}
-
-// perMatch 把“总量”取值函数包装成“场均”取值函数。
-func perMatch(fn func(RankEntry) float64) func(RankEntry) float64 {
-	return func(e RankEntry) float64 { return perMatchVal(fn(e), e.Matches) }
 }
 
 // knockConvOf 击倒转化率：击杀 ÷ 击倒，无击倒时为 0。
@@ -306,37 +213,9 @@ func firePerTelMatch(e RankEntry) float64 {
 }
 
 // computeSubScores 计算六维能力分（0-100）并据此合成综合分。
-// 各指标先在队内做统计，再按 shrinkPrior 向社区基线收缩，最后按“高于均值多少个标准差”给分，
-// 这样小队伍或同质队伍不会退化成纯队内排名，跨活动也更具可比性。
+// 评分以“普通玩家”绝对基线为参照（见 metricBaseline.score）：50=普通水平，分数表达“比常人高多少”，
+// 与同场玩家强弱无关，因此跨活动可比，雷达图也表示个人相对常人的能力轮廓。
 func computeSubScores(entries []RankEntry) {
-	if len(entries) == 0 {
-		return
-	}
-
-	avg := computeTeamAverages(entries)
-
-	mk := func(fn func(RankEntry) float64, base metricBaseline, requireTel bool) dimScorer {
-		m, sd, n := metricStats(entries, fn, requireTel)
-		return newDimScorer(m, sd, base, n)
-	}
-
-	adrS := mk(func(e RankEntry) float64 { return e.AvgDamage }, baseADR, false)
-	kpgS := mk(func(e RankEntry) float64 { return e.KPG }, baseKPG, false)
-	kdaS := mk(func(e RankEntry) float64 { return e.KDA }, baseKDA, false)
-	dbnoS := mk(perMatch(func(e RankEntry) float64 { return float64(e.DBNOs) }), baseDBNOPM, false)
-	hsS := mk(perMatch(func(e RankEntry) float64 { return float64(e.HeadshotKills) }), baseHSPM, false)
-	survS := mk(perMatch(func(e RankEntry) float64 { return e.TimeAlive }), baseSurvPM, false)
-	top10S := mk(perMatch(func(e RankEntry) float64 { return float64(e.Top10Count) }), baseTop10Rate, false)
-	deathS := mk(perMatch(func(e RankEntry) float64 { return float64(e.Deaths) }), baseDeathRate, false)
-	assistS := mk(perMatch(func(e RankEntry) float64 { return float64(e.Assists) }), baseAssistsPM, false)
-	reviveS := mk(perMatch(func(e RankEntry) float64 { return float64(e.Revives) }), baseRevivesPM, false)
-	knockS := mk(knockConvOf, baseKnockConv, false)
-
-	dmgTakenS := mk(func(e RankEntry) float64 { return e.AvgDamageTaken }, baseDmgTakenPM, true)
-	tradeS := mk(func(e RankEntry) float64 { return e.TradeRatio }, baseTrade, true)
-	hitEffS := mk(func(e RankEntry) float64 { return e.HitEfficiency }, baseHitEff, true)
-	fireS := mk(firePerTelMatch, baseFirePM, true)
-
 	for i := range entries {
 		e := &entries[i]
 		if e.Matches <= 0 {
@@ -358,33 +237,33 @@ func computeSubScores(entries []RankEntry) {
 		knock := knockConvOf(*e)
 
 		// 火力：输出体量（ADR + 场均击杀）
-		e.DimFirepower = 0.6*adrS.score(e.AvgDamage) + 0.4*kpgS.score(e.KPG)
+		e.DimFirepower = 0.6*baseADR.score(e.AvgDamage) + 0.4*baseKPG.score(e.KPG)
 
 		// 精准：把交火转化为淘汰的质量（K/D、命中效、爆头、击倒转化）
 		if hasTel {
-			e.DimLethality = 0.40*kdaS.score(e.KDA) + 0.30*hitEffS.score(e.HitEfficiency) +
-				0.15*hsS.score(hsPM) + 0.15*knockS.score(knock)
+			e.DimLethality = 0.40*baseKDA.score(e.KDA) + 0.30*baseHitEff.score(e.HitEfficiency) +
+				0.15*baseHSPM.score(hsPM) + 0.15*baseKnockConv.score(knock)
 		} else {
-			e.DimLethality = 0.60*kdaS.score(e.KDA) + 0.25*hsS.score(hsPM) + 0.15*knockS.score(knock)
+			e.DimLethality = 0.60*baseKDA.score(e.KDA) + 0.25*baseHSPM.score(hsPM) + 0.15*baseKnockConv.score(knock)
 		}
 
 		// 对抗：前压与换血质量；无遥测时退化为 ADR / 击倒的近似
 		if hasTel {
-			e.DimAggression = 0.35*dmgTakenS.score(e.AvgDamageTaken) + 0.30*tradeS.score(e.TradeRatio) +
-				0.20*fireS.score(firePerTelMatch(*e)) + 0.15*dbnoS.score(dbnoPM)
+			e.DimAggression = 0.35*baseDmgTakenPM.score(e.AvgDamageTaken) + 0.30*baseTrade.score(e.TradeRatio) +
+				0.20*baseFirePM.score(firePerTelMatch(*e)) + 0.15*baseDBNOPM.score(dbnoPM)
 		} else {
-			e.DimAggression = 0.55*adrS.score(e.AvgDamage) + 0.45*dbnoS.score(dbnoPM)
+			e.DimAggression = 0.55*baseADR.score(e.AvgDamage) + 0.45*baseDBNOPM.score(dbnoPM)
 		}
 
 		// 生存 / 运营：维度分如实反映存活与排名表现（雷达图据此呈现真实风格）
-		e.DimSurvival = 0.55*survS.score(survPM) + 0.45*(100-deathS.score(deathRate))
-		e.DimOperating = 0.70*top10S.score(top10Rate) + 0.30*survS.score(survPM)
+		e.DimSurvival = 0.55*baseSurvPM.score(survPM) + 0.45*(100-baseDeathRate.score(deathRate))
+		e.DimOperating = 0.70*baseTop10Rate.score(top10Rate) + 0.30*baseSurvPM.score(survPM)
 
 		// 团队：助攻 + 救援
-		e.DimTeamwork = 0.5*assistS.score(assistsPM) + 0.5*reviveS.score(revivesPM)
+		e.DimTeamwork = 0.5*baseAssistsPM.score(assistsPM) + 0.5*baseRevivesPM.score(revivesPM)
 
 		// 综合分：以战斗为主；生存与运营按输出参与度设门槛，避免纯苟分推高总分
-		gate := survivalContributionGate(*e, avg)
+		gate := survivalContributionGate(*e)
 		e.Score = wFirepower*e.DimFirepower + wLethality*e.DimLethality + wAggression*e.DimAggression +
 			(wSurvival*e.DimSurvival+wOperating*e.DimOperating)*gate + wTeamwork*e.DimTeamwork
 
@@ -398,10 +277,9 @@ func computeSubScores(entries []RankEntry) {
 
 // applyTags 为每个 entry 计算多标签、主称号和评价文案。
 func applyTags(entries []RankEntry, mvpRegID int64) {
-	avg := computeTeamAverages(entries)
 	for i := range entries {
 		e := &entries[i]
-		tags := buildTagsForEntry(*e, avg)
+		tags := buildTagsForEntry(*e)
 
 		// MVP（综合分 No.1）
 		if mvpRegID > 0 && e.RegID == mvpRegID && e.Matches > 0 {
@@ -410,7 +288,7 @@ func applyTags(entries []RankEntry, mvpRegID int64) {
 
 		e.Tags = dedupeTags(tags)
 		e.PrimaryTitle = pickPrimaryTitle(e.Tags)
-		e.Comment = composeComment(*e, avg)
+		e.Comment = composeComment(*e, teamAverages{})
 		e.Confidence = computeConfidence(e.Matches)
 	}
 }
@@ -452,9 +330,9 @@ func pickPrimaryTitle(tags []RankTag) *RankTag {
 	return &t
 }
 
-// buildTagsForEntry 基于固定阈值给单个玩家贴标签。
+// buildTagsForEntry 基于“普通玩家”绝对阈值给单个玩家贴标签，与同场队友强弱无关。
 // 阈值参考社区常见口径：ADR < 100 偏低，130-180 普通，180+ 输出强；K/D 1.0 左右为平均，1.2+ 稳定正收益。
-func buildTagsForEntry(e RankEntry, avg teamAverages) []RankTag {
+func buildTagsForEntry(e RankEntry) []RankTag {
 	if e.Matches <= 0 {
 		return nil
 	}
@@ -494,12 +372,12 @@ func buildTagsForEntry(e RankEntry, avg teamAverages) []RankTag {
 		tags = append(tags, makeTag(TagSniperPos))
 	}
 
-	// 稳健: 存活和进圈表现好，且不是纯苟分。
-	if hasTel && timePM >= 680 && top10Rate >= 0.30 && deathPM <= 0.95 && trade >= 0.95 && adr >= 140 {
+	// 稳健: 存活和进圈表现好，且不是纯苟分。后期高排名玩家常常死在前十，不再用死亡率反向卡。
+	if hasTel && timePM >= 680 && top10Rate >= 0.30 && trade >= 0.95 && adr >= 140 {
 		tags = append(tags, makeTag(TagSteady))
 	}
 
-	// 医疗兵: 拉人率显著高于队均，且有足够的绝对拉人数与基础协同参与。
+	// 医疗兵: 拉人率达到较高绝对水平，且有足够的绝对拉人数与基础协同参与。
 	if revivePM >= 0.6 && e.Revives >= 4 && assistsPM >= 0.3 {
 		tags = append(tags, makeTag(TagMedic))
 	}
@@ -510,7 +388,7 @@ func buildTagsForEntry(e RankEntry, avg teamAverages) []RankTag {
 	}
 
 	// 运营大师: 后期率高、存活稳定，输出中等即可。
-	if timePM >= 700 && top10Rate >= 0.35 && deathPM <= 0.95 && adr >= 120 {
+	if timePM >= 700 && top10Rate >= 0.35 && adr >= 120 {
 		tags = append(tags, makeTag(TagOperator))
 	}
 
@@ -531,8 +409,8 @@ func buildTagsForEntry(e RankEntry, avg teamAverages) []RankTag {
 		tags = append(tags, makeTag(TagWeak))
 	}
 
-	// 夕阳红枪法: 开火多 + 命中效低 + ADR 低（需遥测）
-	if hasTel && firePM >= 220 && hitEff < 0.75 && adr < 150 {
+	// 夕阳红枪法: 开火高于常人但命中和输出都低于常人，典型的“乱喷打不准”（需遥测）。
+	if hasTel && firePM > baseFirePM.mean && hitEff < baseHitEff.mean && adr < 150 {
 		tags = append(tags, makeTag(TagDuskShooter))
 	}
 
