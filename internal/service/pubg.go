@@ -496,6 +496,12 @@ type RankEntry struct {
 	EfficiencyScore  float64
 	SurvivalScore    float64
 	TeamScore        float64
+	DimFirepower     float64
+	DimLethality     float64
+	DimAggression    float64
+	DimSurvival      float64
+	DimOperating     float64
+	DimTeamwork      float64
 	PrimaryTitle     *RankTag
 	Tags             []RankTag
 	Comment          string
@@ -602,7 +608,7 @@ func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, e
 		entryIndex[r.name] = len(entries)
 		trackedNames[r.name] = struct{}{}
 		playerNames = append(playerNames, r.name)
-		entries = append(entries, RankEntry{RegID: r.id, GameName: r.name, AnalysisVersion: "v2"})
+		entries = append(entries, RankEntry{RegID: r.id, GameName: r.name, AnalysisVersion: "v3"})
 	}
 
 	candidateMatchIDs := make(map[string]struct{})
@@ -806,9 +812,10 @@ func persistRankingsV2(db *sql.DB, eventID int64, entries []RankEntry) error {
 				total_damage, telemetry_damage, telemetry_matches,
 				damage_taken, fire_count, trade_ratio, hit_efficiency, time_alive,
 				score, combat_score, efficiency_score, survival_score, team_score,
+				dim_firepower, dim_lethality, dim_aggression, dim_survival, dim_operating, dim_teamwork,
 				primary_title_label, primary_title_color, tags_json, comment, confidence, analysis_status,
 				rank_no, rank_label, refreshed_at
-			) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(event_id, reg_id) DO UPDATE SET
 				game_name=excluded.game_name,
 				event_matches=excluded.event_matches,
@@ -835,6 +842,12 @@ func persistRankingsV2(db *sql.DB, eventID int64, entries []RankEntry) error {
 				efficiency_score=excluded.efficiency_score,
 				survival_score=excluded.survival_score,
 				team_score=excluded.team_score,
+				dim_firepower=excluded.dim_firepower,
+				dim_lethality=excluded.dim_lethality,
+				dim_aggression=excluded.dim_aggression,
+				dim_survival=excluded.dim_survival,
+				dim_operating=excluded.dim_operating,
+				dim_teamwork=excluded.dim_teamwork,
 				primary_title_label=excluded.primary_title_label,
 				primary_title_color=excluded.primary_title_color,
 				tags_json=excluded.tags_json,
@@ -850,6 +863,7 @@ func persistRankingsV2(db *sql.DB, eventID int64, entries []RankEntry) error {
 			e.TotalDamage, e.TelemetryDamage, e.TelemetryMatches,
 			e.DamageTaken, e.FireCount, e.TradeRatio, e.HitEfficiency, e.TimeAlive,
 			e.Score, e.CombatScore, e.EfficiencyScore, e.SurvivalScore, e.TeamScore,
+			e.DimFirepower, e.DimLethality, e.DimAggression, e.DimSurvival, e.DimOperating, e.DimTeamwork,
 			primaryLabel, primaryColor, tagsJSON, e.Comment, e.Confidence, e.AnalysisStatus,
 			e.RankNo, e.RankLabel, now,
 		)
@@ -1236,6 +1250,7 @@ func GetEventRankings(db *sql.DB, eventID int64) ([]RankEntry, error) {
 		       damage_taken, fire_count, trade_ratio, hit_efficiency,
 		       COALESCE(time_alive,0),
 		       score, COALESCE(combat_score,0), COALESCE(efficiency_score,0), COALESCE(survival_score,0), COALESCE(team_score,0),
+		       COALESCE(dim_firepower,0), COALESCE(dim_lethality,0), COALESCE(dim_aggression,0), COALESCE(dim_survival,0), COALESCE(dim_operating,0), COALESCE(dim_teamwork,0),
 		       COALESCE(primary_title_label,''), COALESCE(primary_title_color,''),
 		       COALESCE(tags_json,''), COALESCE(comment,''), COALESCE(confidence,''), COALESCE(analysis_status,''),
 		       rank_no, COALESCE(rank_label,'')
@@ -1255,11 +1270,12 @@ func GetEventRankings(db *sql.DB, eventID int64) ([]RankEntry, error) {
 				&e.DamageTaken, &e.FireCount, &e.TradeRatio, &e.HitEfficiency,
 				&e.TimeAlive,
 				&e.Score, &e.CombatScore, &e.EfficiencyScore, &e.SurvivalScore, &e.TeamScore,
+				&e.DimFirepower, &e.DimLethality, &e.DimAggression, &e.DimSurvival, &e.DimOperating, &e.DimTeamwork,
 				&primaryLabel, &primaryColor,
 				&tagsJSON, &e.Comment, &e.Confidence, &e.AnalysisStatus,
 				&e.RankNo, &e.RankLabel,
 			); err == nil {
-				e.AnalysisVersion = "v2"
+				e.AnalysisVersion = "v3"
 				if e.Matches > 0 {
 					e.AvgDamage = e.TotalDamage / float64(e.Matches)
 					e.KDA = float64(e.Kills) / math.Max(float64(e.Deaths), 1)

@@ -3,6 +3,7 @@ import { Popover, Table, Tag, Tooltip } from 'antd';
 import type { ReactNode } from 'react';
 import type { RankEntry } from '../api';
 
+import StrengthRadar from './StrengthRadar';
 import { analysisStatusLabel, confidenceColor, confidenceLabel, resolveRankTags, tagInfo } from '../rankingTags';
 
 type CompactRankingTableProps = {
@@ -280,6 +281,51 @@ const renderDetailSection = (title: string, items: ReactNode[]) => (
   </div>
 );
 
+const STRENGTH_DIMENSIONS: {
+  key: 'DimFirepower' | 'DimLethality' | 'DimAggression' | 'DimSurvival' | 'DimOperating' | 'DimTeamwork';
+  label: string;
+  tip: string;
+}[] = [
+  { key: 'DimFirepower', label: '火力', tip: '输出体量：场均伤害与场均击杀' },
+  { key: 'DimLethality', label: '精准', tip: '输出质量：K/D、命中效、爆头率、击倒转化' },
+  { key: 'DimAggression', label: '对抗', tip: '前压与换血：承伤、换血比、开火量、击倒（部分依赖遥测）' },
+  { key: 'DimSurvival', label: '生存', tip: '存活时长与早死控制' },
+  { key: 'DimOperating', label: '运营', tip: '进圈率与最终排名表现' },
+  { key: 'DimTeamwork', label: '团队', tip: '助攻与救援贡献' },
+];
+
+// renderStrengthSection 渲染六维能力雷达和各维度分值；老数据（无维度分）时不展示。
+const renderStrengthSection = (record: RankEntry): ReactNode => {
+  const dims = STRENGTH_DIMENSIONS.map((d) => ({ ...d, value: record[d.key] || 0 }));
+  if (!dims.some((d) => d.value > 0)) return null;
+  return (
+    <div style={{ display: 'grid', gap: 10, padding: 12, borderRadius: 14, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(15,23,42,0.28)' }}>
+      <div style={{ fontFamily: 'var(--heading-font)', fontSize: 11, letterSpacing: '0.14em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>个人能力雷达 · 六维</div>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(0, 280px) minmax(0, 1fr)', alignItems: 'center' }}>
+        <StrengthRadar
+          firepower={record.DimFirepower || 0}
+          lethality={record.DimLethality || 0}
+          aggression={record.DimAggression || 0}
+          survival={record.DimSurvival || 0}
+          operating={record.DimOperating || 0}
+          teamwork={record.DimTeamwork || 0}
+          name={record.GameName}
+        />
+        <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))' }}>
+          {dims.map((d) => (
+            <Tooltip key={d.key} title={d.tip}>
+              <div style={detailCardStyle(false)}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{d.label}</div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{d.value.toFixed(1)}</div>
+              </div>
+            </Tooltip>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function CompactRankingTable({ rankings, size = 'small' }: CompactRankingTableProps) {
   const maxima = buildMaxima(rankings);
 
@@ -308,7 +354,7 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
               <div style={{ display: 'grid', gap: 8, minWidth: 0, wordBreak: 'break-word' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontWeight: 700, fontSize: 15, overflowWrap: 'anywhere' }}>{record.GameName || '-'}</span>
-                  <Tag color={record.AnalysisVersion === 'v2' ? 'geekblue' : 'default'}>{(record.AnalysisVersion || 'v1').toUpperCase()}</Tag>
+                  <Tag color={record.AnalysisVersion === 'v3' ? 'geekblue' : 'default'}>{(record.AnalysisVersion || 'v1').toUpperCase()}</Tag>
                 </div>
                 {teamTags.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -374,7 +420,7 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
           ),
         },
         {
-          title: titleWithTip('评分', '综合战斗、承压、协作和生存指标的加权得分'),
+          title: titleWithTip('评分', '综合火力、精准、对抗、生存、运营、团队六维的加权得分（生存/运营按输出参与度设门槛）'),
           dataIndex: 'Score',
           key: 'score',
           width: 96,
@@ -395,6 +441,7 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
         expandRowByClick: true,
         expandedRowRender: (record) => (
           <div style={{ display: 'grid', gap: 12, padding: '8px 4px' }}>
+            {renderStrengthSection(record)}
             <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
               {renderDetailSection('输出', [
                 renderDetailMetric(metricTips.kills, formatCount(record.Kills), record.Kills === maxima.kills && record.Kills > 0),

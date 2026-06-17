@@ -166,23 +166,95 @@ func computeConfidence(matches int) string {
 	}
 }
 
-// minMaxNorm 把 [min,max] 范围归一到 [0,1]，再 *100 转换为分数。
-func minMaxNorm(value, min, max float64) float64 {
-	if max <= min {
-		return 0
+// metricBaseline 指标的社区经验基线（均值 / 标准差）。用于小样本时把队内统计向绝对水平收缩，
+// 使评分不至于在小队伍或同质队伍里退化成纯队内排名。数值为混合段位的粗略经验值，可按需调整。
+type metricBaseline struct{ mean, std float64 }
+
+var (
+	baseADR        = metricBaseline{150, 70}
+	baseKPG        = metricBaseline{0.8, 0.6}
+	baseKDA        = metricBaseline{1.0, 0.8}
+	baseDBNOPM     = metricBaseline{1.0, 0.7}
+	baseHSPM       = metricBaseline{0.3, 0.3}
+	baseHitEff     = metricBaseline{0.8, 0.5}
+	baseTrade      = metricBaseline{1.0, 0.6}
+	baseDmgTakenPM = metricBaseline{200, 90}
+	baseFirePM     = metricBaseline{150, 90}
+	baseSurvPM     = metricBaseline{700, 300}
+	baseTop10Rate  = metricBaseline{0.35, 0.25}
+	baseDeathRate  = metricBaseline{0.9, 0.3}
+	baseAssistsPM  = metricBaseline{0.6, 0.5}
+	baseRevivesPM  = metricBaseline{0.5, 0.5}
+	baseKnockConv  = metricBaseline{1.0, 0.5}
+)
+
+// 综合分维度权重（合计为 1）。以战斗为主，兼顾运营与团队，贴近社区对个人战力的认知。
+const (
+	wFirepower  = 0.20
+	wLethality  = 0.20
+	wAggression = 0.15
+	wSurvival   = 0.10
+	wOperating  = 0.15
+	wTeamwork   = 0.20
+)
+
+// shrinkPrior 收缩先验强度：有效样本量等于该值时，队内统计与绝对基线各占一半。
+const shrinkPrior = 5.0
+
+// metricStats 计算指标在队内的均值与总体标准差；requireTel 时仅统计有遥测的样本。
+func metricStats(entries []RankEntry, fn func(RankEntry) float64, requireTel bool) (mean, std float64, n int) {
+	var sum float64
+	vals := make([]float64, 0, len(entries))
+	for _, e := range entries {
+		if e.Matches <= 0 {
+			continue
+		}
+		if requireTel && e.TelemetryMatches <= 0 {
+			continue
+		}
+		v := fn(e)
+		vals = append(vals, v)
+		sum += v
 	}
-	if value < min {
-		value = min
+	n = len(vals)
+	if n == 0 {
+		return 0, 0, 0
 	}
-	if value > max {
-		value = max
+	mean = sum / float64(n)
+	var ss float64
+	for _, v := range vals {
+		d := v - mean
+		ss += d * d
 	}
-	return (value - min) / (max - min)
+	return mean, math.Sqrt(ss / float64(n)), n
 }
 
-// compressedNorm 在队内 min-max 的基础上做轻度压缩，减少小样本下的断层分差。
-func compressedNorm(value, min, max float64) float64 {
-	return math.Cbrt(minMaxNorm(value, min, max))
+// dimScorer 把队内统计与绝对基线收缩混合后，按“高于均值多少个标准差”给出 0-100 分。
+type dimScorer struct{ mean, std float64 }
+
+func newDimScorer(cohortMean, cohortStd float64, base metricBaseline, n int) dimScorer {
+	w := float64(n) / (float64(n) + shrinkPrior)
+	mean := w*cohortMean + (1-w)*base.mean
+	std := w*cohortStd + (1-w)*base.std
+	if floor := base.std * 0.35; std < floor {
+		std = floor // 方差地板：同质队伍下避免把细小差异放大成噪声
+	}
+	return dimScorer{mean: mean, std: std}
+}
+
+// score 把 +1 个标准差映射到 65 分、+2 个标准差映射到 80 分，并裁剪到 [0,100]。
+func (s dimScorer) score(value float64) float64 {
+	if s.std <= 0 {
+		return 50
+	}
+	v := 50 + 15*(value-s.mean)/s.std
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
 }
 
 func cappedAvgRatio(value, avg float64) float64 {
@@ -199,178 +271,128 @@ func cappedAvgRatio(value, avg float64) float64 {
 	return ratio
 }
 
-func outputReadiness(e RankEntry, avg teamAverages) float64 {
-	return 0.55*cappedAvgRatio(e.AvgDamage, avg.avgADR) +
-		0.30*cappedAvgRatio(e.KDA, avg.avgKDA) +
-		0.15*cappedAvgRatio(e.KPG, avg.avgKPG)
-}
-
 func survivalContributionGate(e RankEntry, avg teamAverages) float64 {
 	readiness := math.Max(cappedAvgRatio(e.AvgDamage, avg.avgADR), cappedAvgRatio(e.KPG, avg.avgKPG))
 	return 0.45 + 0.55*readiness
 }
 
-// rangeOf 取队内某指标的最小最大值，用于做相对归一化。
-func rangeOf(entries []RankEntry, fn func(RankEntry) float64, requireTelemetry bool) (float64, float64) {
-	min := math.MaxFloat64
-	max := -math.MaxFloat64
-	hit := false
-	for _, e := range entries {
-		if e.Matches <= 0 {
-			continue
-		}
-		if requireTelemetry && e.TelemetryMatches <= 0 {
-			continue
-		}
-		v := fn(e)
-		if v < min {
-			min = v
-		}
-		if v > max {
-			max = v
-		}
-		hit = true
+// perMatchVal 计算场均值，matches<=0 时返回 0。
+func perMatchVal(value float64, matches int) float64 {
+	if matches <= 0 {
+		return 0
 	}
-	if !hit {
-		return 0, 0
-	}
-	return min, max
+	return value / float64(matches)
 }
 
-// computeSubScores 计算 4 项子分（0-100），按设计稿 §11.1 权重。
-// 子分采用队内 min-max 归一化，避免不同队伍水平差异过大。
+// perMatch 把“总量”取值函数包装成“场均”取值函数。
+func perMatch(fn func(RankEntry) float64) func(RankEntry) float64 {
+	return func(e RankEntry) float64 { return perMatchVal(fn(e), e.Matches) }
+}
+
+// knockConvOf 击倒转化率：击杀 ÷ 击倒，无击倒时为 0。
+func knockConvOf(e RankEntry) float64 {
+	if e.DBNOs > 0 {
+		return float64(e.Kills) / float64(e.DBNOs)
+	}
+	return 0
+}
+
+// firePerTelMatch 场均开火次数（按遥测场次）。
+func firePerTelMatch(e RankEntry) float64 {
+	if e.TelemetryMatches > 0 {
+		return float64(e.FireCount) / float64(e.TelemetryMatches)
+	}
+	return 0
+}
+
+// computeSubScores 计算六维能力分（0-100）并据此合成综合分。
+// 各指标先在队内做统计，再按 shrinkPrior 向社区基线收缩，最后按“高于均值多少个标准差”给分，
+// 这样小队伍或同质队伍不会退化成纯队内排名，跨活动也更具可比性。
 func computeSubScores(entries []RankEntry) {
 	if len(entries) == 0 {
 		return
 	}
 
 	avg := computeTeamAverages(entries)
-	adrMin, adrMax := rangeOf(entries, func(e RankEntry) float64 { return e.AvgDamage }, false)
-	kpgMin, kpgMax := rangeOf(entries, func(e RankEntry) float64 { return e.KPG }, false)
-	kdaMin, kdaMax := rangeOf(entries, func(e RankEntry) float64 { return e.KDA }, false)
-	dbnosMin, dbnosMax := rangeOf(entries, func(e RankEntry) float64 {
-		if e.Matches > 0 {
-			return float64(e.DBNOs) / float64(e.Matches)
-		}
-		return 0
-	}, false)
-	hsMin, hsMax := rangeOf(entries, func(e RankEntry) float64 {
-		if e.Matches > 0 {
-			return float64(e.HeadshotKills) / float64(e.Matches)
-		}
-		return 0
-	}, false)
 
-	dmgTakenMin, dmgTakenMax := rangeOf(entries, func(e RankEntry) float64 { return e.AvgDamageTaken }, true)
-	tradeMin, tradeMax := rangeOf(entries, func(e RankEntry) float64 { return e.TradeRatio }, true)
-	hitEffMin, hitEffMax := rangeOf(entries, func(e RankEntry) float64 { return e.HitEfficiency }, true)
-	fireMin, fireMax := rangeOf(entries, func(e RankEntry) float64 {
-		if e.TelemetryMatches > 0 {
-			return float64(e.FireCount) / float64(e.TelemetryMatches)
-		}
-		return 0
-	}, true)
+	mk := func(fn func(RankEntry) float64, base metricBaseline, requireTel bool) dimScorer {
+		m, sd, n := metricStats(entries, fn, requireTel)
+		return newDimScorer(m, sd, base, n)
+	}
 
-	survMin, survMax := rangeOf(entries, func(e RankEntry) float64 {
-		if e.Matches > 0 {
-			return e.TimeAlive / float64(e.Matches)
-		}
-		return 0
-	}, false)
-	top10Min, top10Max := rangeOf(entries, func(e RankEntry) float64 {
-		if e.Matches > 0 {
-			return float64(e.Top10Count) / float64(e.Matches)
-		}
-		return 0
-	}, false)
-	deathRateMin, deathRateMax := rangeOf(entries, func(e RankEntry) float64 {
-		if e.Matches > 0 {
-			return float64(e.Deaths) / float64(e.Matches)
-		}
-		return 0
-	}, false)
+	adrS := mk(func(e RankEntry) float64 { return e.AvgDamage }, baseADR, false)
+	kpgS := mk(func(e RankEntry) float64 { return e.KPG }, baseKPG, false)
+	kdaS := mk(func(e RankEntry) float64 { return e.KDA }, baseKDA, false)
+	dbnoS := mk(perMatch(func(e RankEntry) float64 { return float64(e.DBNOs) }), baseDBNOPM, false)
+	hsS := mk(perMatch(func(e RankEntry) float64 { return float64(e.HeadshotKills) }), baseHSPM, false)
+	survS := mk(perMatch(func(e RankEntry) float64 { return e.TimeAlive }), baseSurvPM, false)
+	top10S := mk(perMatch(func(e RankEntry) float64 { return float64(e.Top10Count) }), baseTop10Rate, false)
+	deathS := mk(perMatch(func(e RankEntry) float64 { return float64(e.Deaths) }), baseDeathRate, false)
+	assistS := mk(perMatch(func(e RankEntry) float64 { return float64(e.Assists) }), baseAssistsPM, false)
+	reviveS := mk(perMatch(func(e RankEntry) float64 { return float64(e.Revives) }), baseRevivesPM, false)
+	knockS := mk(knockConvOf, baseKnockConv, false)
 
-	revivesMin, revivesMax := rangeOf(entries, func(e RankEntry) float64 {
-		if e.Matches > 0 {
-			return float64(e.Revives) / float64(e.Matches)
-		}
-		return 0
-	}, false)
-	assistsMin, assistsMax := rangeOf(entries, func(e RankEntry) float64 {
-		if e.Matches > 0 {
-			return float64(e.Assists) / float64(e.Matches)
-		}
-		return 0
-	}, false)
-	knockConversionMin, knockConversionMax := rangeOf(entries, func(e RankEntry) float64 {
-		if e.DBNOs > 0 {
-			return float64(e.Kills) / float64(e.DBNOs)
-		}
-		return 0
-	}, false)
+	dmgTakenS := mk(func(e RankEntry) float64 { return e.AvgDamageTaken }, baseDmgTakenPM, true)
+	tradeS := mk(func(e RankEntry) float64 { return e.TradeRatio }, baseTrade, true)
+	hitEffS := mk(func(e RankEntry) float64 { return e.HitEfficiency }, baseHitEff, true)
+	fireS := mk(firePerTelMatch, baseFirePM, true)
 
 	for i := range entries {
 		e := &entries[i]
 		if e.Matches <= 0 {
-			e.CombatScore = 0
-			e.EfficiencyScore = 0
-			e.SurvivalScore = 0
-			e.TeamScore = 0
+			e.DimFirepower, e.DimLethality, e.DimAggression = 0, 0, 0
+			e.DimSurvival, e.DimOperating, e.DimTeamwork = 0, 0, 0
+			e.CombatScore, e.EfficiencyScore, e.SurvivalScore, e.TeamScore = 0, 0, 0, 0
 			e.Score = 0
 			continue
 		}
+		hasTel := e.TelemetryMatches > 0
 
-		// CombatScore: K/D 30%, ADR 25%, KPG 20%, DBNO/match 15%, Headshot/match 10%.
-		dbnosPM := float64(e.DBNOs) / float64(e.Matches)
-		hsPM := float64(e.HeadshotKills) / float64(e.Matches)
-		combat := 30*compressedNorm(e.KDA, kdaMin, kdaMax) +
-			25*compressedNorm(e.AvgDamage, adrMin, adrMax) +
-			20*compressedNorm(e.KPG, kpgMin, kpgMax) +
-			15*compressedNorm(dbnosPM, dbnosMin, dbnosMax) +
-			10*compressedNorm(hsPM, hsMin, hsMax)
-		e.CombatScore = combat
+		dbnoPM := perMatchVal(float64(e.DBNOs), e.Matches)
+		hsPM := perMatchVal(float64(e.HeadshotKills), e.Matches)
+		survPM := perMatchVal(e.TimeAlive, e.Matches)
+		top10Rate := perMatchVal(float64(e.Top10Count), e.Matches)
+		deathRate := perMatchVal(float64(e.Deaths), e.Matches)
+		assistsPM := perMatchVal(float64(e.Assists), e.Matches)
+		revivesPM := perMatchVal(float64(e.Revives), e.Matches)
+		knock := knockConvOf(*e)
 
-		// EfficiencyScore 兼容旧字段名，语义为对抗承压：有效承伤、换血、命中效和前排参与。
-		var pressure float64
-		if e.TelemetryMatches > 0 {
-			firePM := float64(e.FireCount) / float64(e.TelemetryMatches)
-			damageTakenNorm := compressedNorm(e.AvgDamageTaken, dmgTakenMin, dmgTakenMax)
-			effectiveDamageTaken := damageTakenNorm * (0.50 + 0.50*outputReadiness(*e, avg))
-			frontline := 0.55*damageTakenNorm + 0.45*compressedNorm(firePM, fireMin, fireMax)
-			pressure = 40*effectiveDamageTaken +
-				35*compressedNorm(e.TradeRatio, tradeMin, tradeMax) +
-				15*compressedNorm(e.HitEfficiency, hitEffMin, hitEffMax) +
-				10*frontline
+		// 火力：输出体量（ADR + 场均击杀）
+		e.DimFirepower = 0.6*adrS.score(e.AvgDamage) + 0.4*kpgS.score(e.KPG)
+
+		// 精准：把交火转化为淘汰的质量（K/D、命中效、爆头、击倒转化）
+		if hasTel {
+			e.DimLethality = 0.40*kdaS.score(e.KDA) + 0.30*hitEffS.score(e.HitEfficiency) +
+				0.15*hsS.score(hsPM) + 0.15*knockS.score(knock)
 		} else {
-			pressure = 55*compressedNorm(e.AvgDamage, adrMin, adrMax) +
-				45*compressedNorm(e.KDA, kdaMin, kdaMax)
+			e.DimLethality = 0.60*kdaS.score(e.KDA) + 0.25*hsS.score(hsPM) + 0.15*knockS.score(knock)
 		}
-		e.EfficiencyScore = pressure
 
-		// SurvivalScore: 场均生存 40%, 高排名率 30%, 早死率反向 30%，再按输出参与度做门槛修正。
-		survPM := e.TimeAlive / float64(e.Matches)
-		top10Rate := float64(e.Top10Count) / float64(e.Matches)
-		deathRate := float64(e.Deaths) / float64(e.Matches)
-		survival := 40*compressedNorm(survPM, survMin, survMax) +
-			30*compressedNorm(top10Rate, top10Min, top10Max) +
-			30*(1-compressedNorm(deathRate, deathRateMin, deathRateMax))
-		e.SurvivalScore = survival * survivalContributionGate(*e, avg)
-
-		// TeamScore: 助攻率 35%, 拉人率 30%, 击倒协同 20%, 击倒转化 15%。
-		assistsPM := float64(e.Assists) / float64(e.Matches)
-		revivesPM := float64(e.Revives) / float64(e.Matches)
-		knockConversion := 0.0
-		if e.DBNOs > 0 {
-			knockConversion = float64(e.Kills) / float64(e.DBNOs)
+		// 对抗：前压与换血质量；无遥测时退化为 ADR / 击倒的近似
+		if hasTel {
+			e.DimAggression = 0.35*dmgTakenS.score(e.AvgDamageTaken) + 0.30*tradeS.score(e.TradeRatio) +
+				0.20*fireS.score(firePerTelMatch(*e)) + 0.15*dbnoS.score(dbnoPM)
+		} else {
+			e.DimAggression = 0.55*adrS.score(e.AvgDamage) + 0.45*dbnoS.score(dbnoPM)
 		}
-		team := 35*compressedNorm(assistsPM, assistsMin, assistsMax) +
-			30*compressedNorm(revivesPM, revivesMin, revivesMax) +
-			20*compressedNorm(dbnosPM, dbnosMin, dbnosMax) +
-			15*compressedNorm(knockConversion, knockConversionMin, knockConversionMax)
-		e.TeamScore = team
 
-		// Score 综合分：战斗 45% + 对抗承压 25% + 团队 20% + 生存 10%。
-		e.Score = e.CombatScore*0.45 + e.EfficiencyScore*0.25 + e.TeamScore*0.20 + e.SurvivalScore*0.10
+		// 生存 / 运营：维度分如实反映存活与排名表现（雷达图据此呈现真实风格）
+		e.DimSurvival = 0.55*survS.score(survPM) + 0.45*(100-deathS.score(deathRate))
+		e.DimOperating = 0.70*top10S.score(top10Rate) + 0.30*survS.score(survPM)
+
+		// 团队：助攻 + 救援
+		e.DimTeamwork = 0.5*assistS.score(assistsPM) + 0.5*reviveS.score(revivesPM)
+
+		// 综合分：以战斗为主；生存与运营按输出参与度设门槛，避免纯苟分推高总分
+		gate := survivalContributionGate(*e, avg)
+		e.Score = wFirepower*e.DimFirepower + wLethality*e.DimLethality + wAggression*e.DimAggression +
+			(wSurvival*e.DimSurvival+wOperating*e.DimOperating)*gate + wTeamwork*e.DimTeamwork
+
+		// 兼容旧的四项子分字段（前端旧视图仍在消费）
+		e.CombatScore = 0.5*e.DimFirepower + 0.5*e.DimLethality
+		e.EfficiencyScore = e.DimAggression
+		e.SurvivalScore = 0.5*e.DimSurvival + 0.5*e.DimOperating
+		e.TeamScore = e.DimTeamwork
 	}
 }
 

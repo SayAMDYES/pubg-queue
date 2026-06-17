@@ -188,6 +188,12 @@ export interface RankEntry {
   EfficiencyScore: number;
   SurvivalScore: number;
   TeamScore: number;
+  DimFirepower: number;
+  DimLethality: number;
+  DimAggression: number;
+  DimSurvival: number;
+  DimOperating: number;
+  DimTeamwork: number;
   PrimaryTitle: RankTag | null;
   Tags: RankTag[] | null;
   Comment: string;
