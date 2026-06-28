@@ -37,8 +37,6 @@ type TeamStats = {
   teamMatches: number;
   rescueRate: number | null;
   knockConversionRate: number | null;
-  bestRescuer: PlayerTeamStats | null;
-  mostDowned: PlayerTeamStats | null;
 };
 
 const toneColor: Record<MetricTone, string> = {
@@ -47,14 +45,14 @@ const toneColor: Record<MetricTone, string> = {
   blue: '#38bdf8',
   green: '#22c55e',
   red: '#d96b6b',
-  muted: 'var(--text-muted)',
+  muted: 'var(--text)',
 };
 
 const contributionTabs = [
-  { key: 'damage', label: '伤害', valueLabel: '伤害', tone: 'gold' as MetricTone },
-  { key: 'knocks', label: '击倒', valueLabel: '击倒', tone: 'orange' as MetricTone },
-  { key: 'revives', label: '扶起', valueLabel: '扶起', tone: 'green' as MetricTone },
-  { key: 'downs', label: '被击倒', valueLabel: '被击倒', tone: 'red' as MetricTone },
+  { key: 'damage', label: '伤害', tone: 'gold' as MetricTone },
+  { key: 'knocks', label: '击倒', tone: 'orange' as MetricTone },
+  { key: 'revives', label: '扶起', tone: 'green' as MetricTone },
+  { key: 'downs', label: '被击倒', tone: 'red' as MetricTone },
 ];
 
 const hasNumber = (value: number | null | undefined): value is number => typeof value === 'number' && Number.isFinite(value);
@@ -81,11 +79,6 @@ const resolveDowns = (record: RankEntry): number => {
   if (hasNumber(extended.downs)) return extended.downs;
   const damagePressure = safeNumber(record.DamageTaken) > 0 ? Math.round(safeNumber(record.DamageTaken) / 280) : 0;
   return Math.max(safeNumber(record.Deaths), damagePressure);
-};
-
-const pickMax = <T,>(items: T[], getValue: (item: T) => number): T | null => {
-  if (items.length === 0) return null;
-  return items.reduce((best, item) => (getValue(item) > getValue(best) ? item : best), items[0]);
 };
 
 export function buildTeamStats(rankings: RankEntry[]): TeamStats {
@@ -115,75 +108,33 @@ export function buildTeamStats(rankings: RankEntry[]): TeamStats {
 
   const total = (getValue: (player: PlayerTeamStats) => number) => players.reduce((sum, player) => sum + getValue(player), 0);
   const average = (getValue: (player: PlayerTeamStats) => number) => (players.length > 0 ? total(getValue) / players.length : 0);
-  const totalScore = total((player) => player.score);
-  const totalDamage = total((player) => player.damage);
   const totalKills = total((player) => player.kills);
   const totalKnocks = total((player) => player.knocks);
   const totalRevives = total((player) => player.revives);
   const totalDowns = total((player) => player.downs);
-  const totalAssists = total((player) => player.assists);
-  const teamMatches = Math.max(...source.map((record) => safeNumber(record.EventMatches) || safeNumber(record.Matches)), 0);
-  const rescueRate = totalDowns > 0 ? totalRevives / totalDowns : null;
-  const knockConversionRate = totalKnocks > 0 ? totalKills / totalKnocks : null;
-  const bestRescuer = pickMax(players, (player) => player.revives);
-  const mostDowned = pickMax(players, (player) => player.downs);
 
   return {
     players,
-    totalScore,
-    totalDamage,
+    totalScore: total((player) => player.score),
+    totalDamage: total((player) => player.damage),
     totalKills,
     totalKnocks,
     totalRevives,
     totalDowns,
-    totalAssists,
+    totalAssists: total((player) => player.assists),
     avgDamage: average((player) => player.damage),
     avgKd: average((player) => player.kd),
-    teamMatches,
-    rescueRate,
-    knockConversionRate,
-    bestRescuer: bestRescuer && bestRescuer.revives > 0 ? bestRescuer : null,
-    mostDowned: mostDowned && mostDowned.downs > 0 ? mostDowned : null,
+    teamMatches: Math.max(...source.map((record) => safeNumber(record.EventMatches) || safeNumber(record.Matches)), 0),
+    rescueRate: totalDowns > 0 ? totalRevives / totalDowns : null,
+    knockConversionRate: totalKnocks > 0 ? totalKills / totalKnocks : null,
   };
 }
 
 function MiniMetric({ label, value, tone = 'muted' }: { label: string; value: string; tone?: MetricTone }) {
   return (
-    <div style={{ minWidth: 0, padding: '8px 10px', border: '1px solid rgba(148,163,184,0.14)', borderRadius: 10, background: 'rgba(15, 23, 42, 0.34)' }}>
-      <div style={{ fontFamily: 'var(--heading-font)', fontSize: 16, lineHeight: 1.1, color: toneColor[tone], fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-      <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>{label}</div>
-    </div>
-  );
-}
-
-export function TeamHeaderSummary({ rankings }: TeamPerformanceOverviewProps) {
-  if (rankings.length === 0) return null;
-  const stats = buildTeamStats(rankings);
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 8, width: '100%' }}>
-      <MiniMetric label="队伍评分" value={formatNumber(stats.totalScore, 1)} tone="gold" />
-      <MiniMetric label="总伤害" value={formatNumber(stats.totalDamage, 0)} tone="gold" />
-      <MiniMetric label="总击杀" value={String(stats.totalKills)} tone="orange" />
-      <MiniMetric label="总击倒" value={String(stats.totalKnocks)} tone="orange" />
-      <MiniMetric label="总扶起" value={String(stats.totalRevives)} tone="green" />
-      <MiniMetric label="救援率" value={formatPercent(stats.rescueRate)} tone="blue" />
-      <MiniMetric label="击倒转化" value={formatPercent(stats.knockConversionRate)} tone="gold" />
-    </div>
-  );
-}
-
-function OverviewGroup({ title, metrics }: { title: string; metrics: { label: string; value: string; tone?: MetricTone }[] }) {
-  return (
-    <div style={{ border: '1px solid rgba(148,163,184,0.16)', borderRadius: 14, padding: 14, background: 'linear-gradient(145deg, rgba(19,19,40,0.92), rgba(8,13,28,0.92))', boxShadow: 'inset 0 0 24px rgba(56,189,248,0.025)' }}>
-      <div style={{ marginBottom: 12, fontFamily: 'var(--heading-font)', fontSize: 11, letterSpacing: '0.14em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{title}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(88px, 1fr))', gap: 10 }}>
-        {metrics.map((metric) => (
-          <div key={`${title}-${metric.label}`} style={{ minWidth: 0 }}>
-            <div style={{ fontFamily: 'var(--heading-font)', fontSize: 20, lineHeight: 1, color: toneColor[metric.tone ?? 'muted'], fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis' }}>{metric.value}</div>
-            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'normal' }}>{metric.label}</div>
-          </div>
-        ))}
-      </div>
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontFamily: 'var(--heading-font)', fontSize: 22, lineHeight: 1.05, color: toneColor[tone], fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
+      <div style={{ marginTop: 5, fontSize: 11, color: 'var(--text-muted)' }}>{label}</div>
     </div>
   );
 }
@@ -191,46 +142,46 @@ function OverviewGroup({ title, metrics }: { title: string; metrics: { label: st
 function ContributionRow({ player, value, total, tabKey, tone }: { player: PlayerTeamStats; value: number; total: number; tabKey: string; tone: MetricTone }) {
   const percent = ratio(value, total);
   const valueUnit = tabKey === 'damage' ? '伤害' : tabKey === 'revives' ? '次扶起' : tabKey === 'downs' ? '次' : '击倒';
-  const supportLabel = tabKey === 'revives' && value === Math.max(value, 3) ? '救援核心' : '';
-  const riskLabel = tabKey === 'downs' && percent >= 0.38 ? '风险偏高' : '';
   return (
     <div style={{ display: 'grid', gap: 6 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', fontSize: 12 }}>
         <span style={{ color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.name}</span>
         <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-          <span style={{ color: toneColor[tone] }}>{tabKey === 'damage' ? formatNumber(value, 0) : value}</span> {valueUnit} / {formatPercent(percent)} {supportLabel || riskLabel ? <span style={{ color: tabKey === 'downs' ? '#d96b6b' : '#22c55e' }}>· {supportLabel || riskLabel}</span> : null}
+          <span style={{ color: toneColor[tone] }}>{tabKey === 'damage' ? formatNumber(value, 0) : value}</span> {valueUnit} / {formatPercent(percent)}
         </span>
       </div>
       <div style={{ height: 5, borderRadius: 999, background: 'rgba(148,163,184,0.12)', overflow: 'hidden' }}>
-        <div style={{ width: `${Math.max(3, percent * 100)}%`, height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${toneColor[tone]}, rgba(255,255,255,0.35))`, opacity: tabKey === 'downs' ? 0.72 : 0.9 }} />
+        <div style={{ width: `${Math.max(3, percent * 100)}%`, height: '100%', borderRadius: 999, background: toneColor[tone], opacity: tabKey === 'downs' ? 0.7 : 0.85 }} />
       </div>
     </div>
   );
 }
 
-function TeamContributionAnalysis({ stats }: { stats: TeamStats }) {
+function TeamContribution({ stats }: { stats: TeamStats }) {
   const [activeTab, setActiveTab] = useState(contributionTabs[0].key);
   const currentTab = contributionTabs.find((tab) => tab.key === activeTab) ?? contributionTabs[0];
   const total = stats.players.reduce((sum, player) => sum + safeNumber(player[currentTab.key as keyof PlayerTeamStats] as number), 0);
   const rows = [...stats.players].sort((a, b) => safeNumber(b[currentTab.key as keyof PlayerTeamStats] as number) - safeNumber(a[currentTab.key as keyof PlayerTeamStats] as number));
 
   return (
-    <div className="g-card" style={{ marginBottom: 16, background: 'linear-gradient(180deg, rgba(13,13,28,0.96), rgba(8,10,22,0.96))' }}>
-      <div className="g-card__header">团队贡献分析</div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-        {contributionTabs.map((tab) => {
-          const active = tab.key === activeTab;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              style={{ border: `1px solid ${active ? toneColor[tab.tone] : 'var(--border)'}`, background: active ? 'rgba(240,165,0,0.09)' : 'rgba(15,23,42,0.35)', color: active ? toneColor[tab.tone] : 'var(--text-muted)', borderRadius: 999, padding: '5px 12px', fontFamily: 'var(--body-font)', fontSize: 12, cursor: 'pointer' }}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div className="section-label">贡献占比</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {contributionTabs.map((tab) => {
+            const active = tab.key === activeTab;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                style={{ border: `1px solid ${active ? toneColor[tab.tone] : 'var(--border)'}`, background: active ? 'rgba(240,165,0,0.08)' : 'transparent', color: active ? toneColor[tab.tone] : 'var(--text-muted)', borderRadius: 999, padding: '4px 12px', fontFamily: 'var(--body-font)', fontSize: 12, cursor: 'pointer' }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div style={{ display: 'grid', gap: 12 }}>
         {rows.map((player) => (
@@ -248,46 +199,25 @@ function TeamContributionAnalysis({ stats }: { stats: TeamStats }) {
   );
 }
 
+// TeamPerformanceOverview 把队伍关键数据和逐人贡献合并到一张卡：
+// 顶部 6 个关键指标，下方按维度切换的贡献占比条。
 export default function TeamPerformanceOverview({ rankings }: TeamPerformanceOverviewProps) {
   if (rankings.length === 0) return null;
   const stats = buildTeamStats(rankings);
   return (
-    <>
-      <div className="g-card g-card--accent" style={{ marginBottom: 16, background: 'linear-gradient(135deg, rgba(13,13,28,0.98), rgba(9,13,30,0.98))' }}>
-        <div className="g-card__header">TEAM OVERVIEW / 队伍总览</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 14 }}>
-          <OverviewGroup
-			title="战斗输出"
-            metrics={[
-              { label: '队伍评分', value: formatNumber(stats.totalScore, 1), tone: 'gold' },
-              { label: '总伤害', value: formatNumber(stats.totalDamage, 0), tone: 'gold' },
-              { label: '总击杀', value: String(stats.totalKills), tone: 'orange' },
-              { label: '总击倒', value: String(stats.totalKnocks), tone: 'orange' },
-              { label: '击倒转化率', value: formatPercent(stats.knockConversionRate), tone: 'gold' },
-            ]}
-          />
-          <OverviewGroup
-            title="协作救援"
-            metrics={[
-              { label: '总扶起', value: String(stats.totalRevives), tone: 'green' },
-              { label: '队伍被击倒', value: String(stats.totalDowns), tone: 'red' },
-              { label: '救援率', value: formatPercent(stats.rescueRate), tone: 'blue' },
-              { label: '最佳救援者', value: stats.bestRescuer?.name ?? '-', tone: 'green' },
-              { label: '最容易被击倒', value: stats.mostDowned?.name ?? '-', tone: 'red' },
-            ]}
-          />
-          <OverviewGroup
-            title="生存稳定"
-            metrics={[
-              { label: '平均 K/D', value: formatNumber(stats.avgKd, 2), tone: 'gold' },
-              { label: '平均伤害', value: formatNumber(stats.avgDamage, 0), tone: 'gold' },
-              { label: '队伍场次', value: String(stats.teamMatches), tone: 'muted' },
-              { label: '总助攻', value: String(stats.totalAssists), tone: 'blue' },
-            ]}
-          />
-        </div>
+    <div className="g-card g-card--accent" style={{ marginBottom: 16 }}>
+      <div className="g-card__header">队伍总览</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: 14, marginBottom: 16 }}>
+        <MiniMetric label="队伍评分" value={formatNumber(stats.totalScore, 1)} tone="gold" />
+        <MiniMetric label="总伤害" value={formatNumber(stats.totalDamage, 0)} tone="gold" />
+        <MiniMetric label="总击杀" value={String(stats.totalKills)} tone="muted" />
+        <MiniMetric label="总击倒" value={String(stats.totalKnocks)} tone="muted" />
+        <MiniMetric label="总扶起" value={String(stats.totalRevives)} tone="green" />
+        <MiniMetric label="救援率" value={formatPercent(stats.rescueRate)} tone="blue" />
       </div>
-      <TeamContributionAnalysis stats={stats} />
-    </>
+      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+        <TeamContribution stats={stats} />
+      </div>
+    </div>
   );
 }

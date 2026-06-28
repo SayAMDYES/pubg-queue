@@ -7,7 +7,7 @@ import {
   type EventDetailData, type RegisterResult, type LeaveResult, type PlayerStatsOverview, type MatchDetail, type SeasonInfo,
 } from '../api';
 import CompactRankingTable from '../components/CompactRankingTable';
-import TeamPerformanceOverview, { TeamHeaderSummary } from '../components/TeamPerformanceOverview';
+import TeamPerformanceOverview from '../components/TeamPerformanceOverview';
 
 export default function EventDetailPage() {
   const { date } = useParams<{ date: string }>();
@@ -331,7 +331,7 @@ export default function EventDetailPage() {
                 </span>
               </div>
             </div>
-            <div style={{ display: 'grid', gap: 10, justifyItems: 'end', flex: hasRankings ? '1 1 auto' : '0 0 auto', minWidth: 0 }}>
+            <div style={{ display: 'grid', gap: 10, justifyItems: 'end', flex: '0 0 auto' }}>
               {!ev.ended && (
                 <Button
                   icon={<CopyOutlined />}
@@ -342,7 +342,6 @@ export default function EventDetailPage() {
                   一键邀请
                 </Button>
               )}
-              {hasRankings && rankingsByTeam.length === 1 && <TeamHeaderSummary rankings={rankings} />}
             </div>
           </div>
           {ev.note && (
