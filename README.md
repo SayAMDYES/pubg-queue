@@ -221,10 +221,11 @@ make build-all
 
 ### 版本号
 
-当前版本维护在 `VERSION`，当前值为 `1.2.0`。`make build`、`build.sh` 和 `docker-build.sh` 会把该版本注入二进制；`docker-build.sh` 会同时打出 `pubg-queue:1.2.0` 和 `pubg-queue:latest`。
+当前版本维护在 `VERSION`，当前值为 `1.2.1`。`make build`、`build.sh` 和 `docker-build.sh` 会把该版本注入二进制；`docker-build.sh` 会同时打出 `pubg-queue:1.2.1` 和 `pubg-queue:latest`。
 
 ### 更新日志
 
+- **1.2.1** — 页面背景由 48px 网格纹理改为氛围径向光晕（顶部暖金 + 右上淡青 + 暗角），登录页同步，去除「一格一格」的网格观感。
 - **1.2.0** — 战绩详情页彻底重构，提升可读性：
   - 队伍总览由「14 项指标分 3 组 + 独立贡献卡」合并为单卡（6 项关键指标 + 贡献占比条）。
   - 排名榜单由「每行 7 个指标卡片」精简为三列：名次 + 选手（含主指标行）+ 综合评分。
@@ -236,7 +237,7 @@ make build-all
 
 | 变量名 | 默认值 | 说明 |
 | --- | --- | --- |
-| `APP_VERSION` | `1.2.0` | 应用版本 / Docker 镜像标签 |
+| `APP_VERSION` | `1.2.1` | 应用版本 / Docker 镜像标签 |
 | `IMAGE_NAME` | `pubg-queue` | Docker 镜像名 |
 | `PORT` | `8080` | 服务监听端口 |
 | `DB_PATH` | `./data/pubg_queue.db` | SQLite 数据库文件路径 |
