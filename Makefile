@@ -1,8 +1,11 @@
+APP_VERSION := $(strip $(file < VERSION))
+LDFLAGS := -X main.version=$(APP_VERSION)
+
 .PHONY: build run test clean hash tidy frontend build-all docker-build
 
 # 仅构建后端（需先构建前端）
 build:
-	go build -o pubg-queue .
+	go build -ldflags="$(LDFLAGS)" -o pubg-queue .
 
 # 构建前端
 frontend:
@@ -30,4 +33,4 @@ tidy:
 
 # 构建 Docker 镜像（自动检测地区、本地 Go/npm 环境，注入合适镜像源）
 docker-build:
-	bash docker-build.sh
+	APP_VERSION=$(APP_VERSION) bash docker-build.sh

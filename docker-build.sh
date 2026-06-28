@@ -9,9 +9,10 @@
 #      其余参数原样透传给 docker build 或 docker compose up
 set -euo pipefail
 
-IMAGE_NAME="${IMAGE_NAME:-pubg-queue}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+APP_VERSION="${APP_VERSION:-$(tr -d '[:space:]' < VERSION)}"
+IMAGE_NAME="${IMAGE_NAME:-pubg-queue}"
 
 # ── 解析参数 ─────────────────────────────────────────────────────────────────
 COMPOSE_MODE=0
@@ -181,6 +182,8 @@ fi
 echo ""
 if [ "$COMPOSE_MODE" = "1" ]; then
     echo "▶ 开始构建并启动服务（docker compose 模式）..."
+    echo "  应用版本    ：${APP_VERSION}"
+    echo "  镜像        ：${IMAGE_NAME}:${APP_VERSION}"
     echo "  GOPROXY     ：${GOPROXY}"
     echo "  NPM_REGISTRY：${NPM_REGISTRY}"
     echo "  USE_VENDOR  ：${USE_VENDOR}"
@@ -190,10 +193,13 @@ if [ "$COMPOSE_MODE" = "1" ]; then
     GONOSUMDB="$GONOSUMDB" \
     NPM_REGISTRY="$NPM_REGISTRY" \
     USE_VENDOR="$USE_VENDOR" \
+    APP_VERSION="$APP_VERSION" \
+    IMAGE_NAME="$IMAGE_NAME" \
         docker compose up --build ${PASSTHROUGH_ARGS[@]+"${PASSTHROUGH_ARGS[@]}"}
 else
     echo "▶ 开始构建 Docker 镜像..."
-    echo "  镜像名称    ：${IMAGE_NAME}"
+    echo "  应用版本    ：${APP_VERSION}"
+    echo "  镜像        ：${IMAGE_NAME}:${APP_VERSION}"
     echo "  GOPROXY     ：${GOPROXY}"
     echo "  NPM_REGISTRY：${NPM_REGISTRY}"
     echo "  USE_VENDOR  ：${USE_VENDOR}"
@@ -203,7 +209,9 @@ else
         --build-arg "GONOSUMDB=${GONOSUMDB}" \
         --build-arg "NPM_REGISTRY=${NPM_REGISTRY}" \
         --build-arg "USE_VENDOR=${USE_VENDOR}" \
-        -t "${IMAGE_NAME}" \
+        --build-arg "APP_VERSION=${APP_VERSION}" \
+        -t "${IMAGE_NAME}:${APP_VERSION}" \
+        -t "${IMAGE_NAME}:latest" \
         ${PASSTHROUGH_ARGS[@]+"${PASSTHROUGH_ARGS[@]}"} \
         .
 fi
@@ -220,10 +228,10 @@ echo ""
 if [ "$COMPOSE_MODE" = "1" ]; then
     echo "✓ 服务已通过 docker compose 启动"
 else
-    echo "✓ Docker 镜像构建完成：${IMAGE_NAME}"
+    echo "✓ Docker 镜像构建完成：${IMAGE_NAME}:${APP_VERSION}"
     echo ""
     echo "运行方式："
-    echo "  docker run --rm -e ADMIN_PASS=xxx -p 8080:8080 ${IMAGE_NAME} --admin-pass xxx"
+    echo "  docker run --rm -e ADMIN_PASS=xxx -p 8080:8080 ${IMAGE_NAME}:${APP_VERSION} --admin-pass xxx"
     echo "  或：docker compose up -d"
 fi
 echo ""

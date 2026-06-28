@@ -152,12 +152,9 @@ func TestFinalizeRankings_AssignsTagsAndScores(t *testing.T) {
 		t.Errorf("Box should be tagged 'box_king', got %+v", byName["Box"].Tags)
 	}
 
-	// Ace 应该综合分最高，排第一并被标 MVP。
+	// Ace 应该综合分最高，排第一。
 	if byName["Ace"].RankNo != 1 {
 		t.Errorf("expected Ace at rank 1, got rank %d", byName["Ace"].RankNo)
-	}
-	if !findTagCode(byName["Ace"].Tags, TagMVP) {
-		t.Errorf("Ace as rank #1 should carry MVP tag, got %+v", byName["Ace"].Tags)
 	}
 	// Box 虽然生存差，但击杀、均伤、K/D 和击倒都高于 Reporter，不应被纯生存项压到最后。
 	if byName["Box"].RankNo >= byName["Reporter"].RankNo {
@@ -371,20 +368,6 @@ func TestPickPrimaryTitle_PrefersStrongTags(t *testing.T) {
 	}
 	if primary.Code != TagAce {
 		t.Errorf("expected primary=ace (highest priority), got %s", primary.Code)
-	}
-}
-
-func TestPickPrimaryTitle_IgnoresMVP(t *testing.T) {
-	tags := []RankTag{
-		makeTag(TagMVP),
-		makeTag(TagBalanced),
-	}
-	primary := pickPrimaryTitle(tags)
-	if primary == nil {
-		t.Fatalf("expected balanced primary, got nil")
-	}
-	if primary.Code != TagBalanced {
-		t.Errorf("expected primary=balanced, got %s", primary.Code)
 	}
 }
 

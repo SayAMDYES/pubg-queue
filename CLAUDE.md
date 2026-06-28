@@ -23,6 +23,7 @@ cd frontend && npm run dev
 make build          # 仅后端（依赖 frontend/dist）
 make build-all      # 前端 + 后端
 go build -o pubg-queue .
+./pubg-queue --version
 
 # 测试
 make test                              # 全部 Go 测试
@@ -81,6 +82,7 @@ docker compose up -d --build
 - 统一 API 响应格式：`{code, msg, data}`，通过 `api.Success()` / `api.Error()` 输出
 - 中间件链（`main.go`）：Logger → Recoverer → SecurityHeaders → RateLimiter → Auth
 - 前端 Vite 开发服务器代理 `/api` 到后端 `localhost:8080`（见 `vite.config.ts`）
+- 应用版本维护在根目录 `VERSION`；构建脚本会注入到二进制，Docker 构建脚本会使用该版本打镜像 tag
 - 管理 API 使用 `authMW.RequireAdminAPI` 中间件返回 401 JSON；前台用户认证通过 `middleware.GetUserSession()` 获取
 - 每队固定 4 个位置，超出容量后进入候补，离队时会按报名顺序自动递补
 - 当前前台报名和离队依赖手机号 + 密码账号体系，并保留旧版 token 离队接口用于兼容

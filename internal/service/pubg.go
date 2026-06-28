@@ -221,8 +221,8 @@ func (c *PUBGClient) getPlayerAccountIDsAndMatches(playerNames []string) (map[st
 	searchPath := fmt.Sprintf("/shards/%s/players?filter[playerNames]=%s", c.shard, joinedNames)
 	var playersResp struct {
 		Data []struct {
-			ID            string `json:"id"`
-			Attributes    struct {
+			ID         string `json:"id"`
+			Attributes struct {
 				Name string `json:"name"`
 			} `json:"attributes"`
 			Relationships struct {
@@ -407,11 +407,11 @@ func (c *PUBGClient) GetPlayerMatchesInTimeRange(ctx context.Context, playerName
 
 // CachedPlayerStats holds cached season stats for frontend display.
 type CachedPlayerStats struct {
-	Found    bool
-	Matches  int
-	Kills    int
-	Assists  int
-	KDA      float64
+	Found   bool
+	Matches int
+	Kills   int
+	Assists int
+	KDA     float64
 }
 
 // CachePlayerSeasonStats asynchronously fetches and caches season stats for gameName.
@@ -455,6 +455,8 @@ func GetCachedPlayerStats(db *sql.DB, gameName string) *CachedPlayerStats {
 }
 
 // ─── Ranking ─────────────────────────────────────────────────────────────────
+
+const currentAnalysisVersion = "v4"
 
 // RankTag 表示一个风格画像标签（前后端通用）。
 type RankTag struct {
@@ -596,7 +598,7 @@ func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, e
 	}
 
 	type qualifiedEventMatch struct {
-		stats            *trackedMatchStats
+		stats             *trackedMatchStats
 		qualifyingPlayers map[string]struct{}
 	}
 
@@ -608,7 +610,7 @@ func RefreshEventRankings(ctx context.Context, db *sql.DB, client *PUBGClient, e
 		entryIndex[r.name] = len(entries)
 		trackedNames[r.name] = struct{}{}
 		playerNames = append(playerNames, r.name)
-		entries = append(entries, RankEntry{RegID: r.id, GameName: r.name, AnalysisVersion: "v3"})
+		entries = append(entries, RankEntry{RegID: r.id, GameName: r.name, AnalysisVersion: currentAnalysisVersion})
 	}
 
 	candidateMatchIDs := make(map[string]struct{})
@@ -814,8 +816,8 @@ func persistRankingsV2(db *sql.DB, eventID int64, entries []RankEntry) error {
 				score, combat_score, efficiency_score, survival_score, team_score,
 				dim_firepower, dim_lethality, dim_aggression, dim_survival, dim_operating, dim_teamwork,
 				primary_title_label, primary_title_color, tags_json, comment, confidence, analysis_status,
-				rank_no, rank_label, refreshed_at
-			) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+				analysis_version, rank_no, rank_label, refreshed_at
+			) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(event_id, reg_id) DO UPDATE SET
 				game_name=excluded.game_name,
 				event_matches=excluded.event_matches,
@@ -854,6 +856,7 @@ func persistRankingsV2(db *sql.DB, eventID int64, entries []RankEntry) error {
 				comment=excluded.comment,
 				confidence=excluded.confidence,
 				analysis_status=excluded.analysis_status,
+				analysis_version=excluded.analysis_version,
 				rank_no=excluded.rank_no,
 				rank_label=excluded.rank_label,
 				refreshed_at=excluded.refreshed_at
@@ -865,7 +868,7 @@ func persistRankingsV2(db *sql.DB, eventID int64, entries []RankEntry) error {
 			e.Score, e.CombatScore, e.EfficiencyScore, e.SurvivalScore, e.TeamScore,
 			e.DimFirepower, e.DimLethality, e.DimAggression, e.DimSurvival, e.DimOperating, e.DimTeamwork,
 			primaryLabel, primaryColor, tagsJSON, e.Comment, e.Confidence, e.AnalysisStatus,
-			e.RankNo, e.RankLabel, now,
+			e.AnalysisVersion, e.RankNo, e.RankLabel, now,
 		)
 		if err != nil {
 			return err
@@ -1253,7 +1256,7 @@ func GetEventRankings(db *sql.DB, eventID int64) ([]RankEntry, error) {
 		       COALESCE(dim_firepower,0), COALESCE(dim_lethality,0), COALESCE(dim_aggression,0), COALESCE(dim_survival,0), COALESCE(dim_operating,0), COALESCE(dim_teamwork,0),
 		       COALESCE(primary_title_label,''), COALESCE(primary_title_color,''),
 		       COALESCE(tags_json,''), COALESCE(comment,''), COALESCE(confidence,''), COALESCE(analysis_status,''),
-		       rank_no, COALESCE(rank_label,'')
+		       COALESCE(analysis_version,'v3'), rank_no, COALESCE(rank_label,'')
 		FROM event_rankings_v2 WHERE event_id=? ORDER BY rank_no ASC
 	`, eventID)
 	if err == nil {
@@ -1273,9 +1276,8 @@ func GetEventRankings(db *sql.DB, eventID int64) ([]RankEntry, error) {
 				&e.DimFirepower, &e.DimLethality, &e.DimAggression, &e.DimSurvival, &e.DimOperating, &e.DimTeamwork,
 				&primaryLabel, &primaryColor,
 				&tagsJSON, &e.Comment, &e.Confidence, &e.AnalysisStatus,
-				&e.RankNo, &e.RankLabel,
+				&e.AnalysisVersion, &e.RankNo, &e.RankLabel,
 			); err == nil {
-				e.AnalysisVersion = "v3"
 				if e.Matches > 0 {
 					e.AvgDamage = e.TotalDamage / float64(e.Matches)
 					e.KDA = float64(e.Kills) / math.Max(float64(e.Deaths), 1)

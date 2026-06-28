@@ -1,10 +1,10 @@
 import { InfoCircleOutlined } from '@ant-design/icons';
-import { Popover, Table, Tag, Tooltip } from 'antd';
+import { Table, Tag, Tooltip } from 'antd';
 import type { ReactNode } from 'react';
 import type { RankEntry } from '../api';
 
 import StrengthRadar from './StrengthRadar';
-import { analysisStatusLabel, confidenceColor, confidenceLabel, resolveRankTags, tagInfo } from '../rankingTags';
+import { analysisStatusLabel, confidenceColor, confidenceLabel } from '../rankingTags';
 
 type CompactRankingTableProps = {
   rankings: RankEntry[];
@@ -165,33 +165,6 @@ const buildMaxima = (rankings: RankEntry[]): RankingMaxima => {
   return maxima;
 };
 
-const getTeamViewTags = (record: RankEntry, rankings: RankEntry[]): { label: string; color: string }[] => {
-  const maxima = buildMaxima(rankings);
-  const avgDamage = teamAverage(rankings, getTotalDamage);
-  const avgDowns = teamAverage(rankings, getDowns);
-  const tags: { label: string; color: string }[] = [];
-
-  if (record.RankNo === 1) tags.push({ label: 'MVP', color: '#f0a500' });
-  if (record.Kills === maxima.kills && record.Kills > 0) tags.push({ label: '火力核心', color: '#f97316' });
-  if ((record.DBNOs || 0) === maxima.dbnos && (record.DBNOs || 0) > 0) tags.push({ label: '击倒核心', color: '#fa8c16' });
-  if ((record.Revives || 0) === maxima.revives && (record.Revives || 0) > 0) tags.push({ label: '救援核心', color: '#22c55e' });
-  if (getTotalDamage(record) >= avgDamage && (record.KDA || 0) >= teamAverage(rankings, (item) => item.KDA || 0)) tags.push({ label: '稳定输出', color: '#38bdf8' });
-  if ((record.Assists || 0) >= teamAverage(rankings, (item) => item.Assists || 0) && (record.Kills || 0) < maxima.kills) tags.push({ label: '团队辅助', color: '#13c2c2' });
-  if (getDowns(record) > avgDowns * 1.25 && getDowns(record) > 0) tags.push({ label: '容易倒地', color: '#d96b6b' });
-  if (getDowns(record) > avgDowns * 1.4 && (record.Revives || 0) < teamAverage(rankings, (item) => item.Revives || 0)) tags.push({ label: '需要保护', color: '#8c8c8c' });
-
-  return tags.slice(0, 2);
-};
-
-const getContributionText = (record: RankEntry, rankings: RankEntry[]): string => {
-  const tags = getTeamViewTags(record, rankings).map((tag) => tag.label);
-  if (tags.includes('救援核心')) return '救援/辅助位，优先保障队友复位';
-  if (tags.includes('火力核心') || tags.includes('击倒核心')) return '进攻核心，负责打开突破口和补枪转化';
-  if (tags.includes('团队辅助')) return '团队辅助位，提供助攻和协作收益';
-  if (tags.includes('稳定输出')) return '稳定输出位，兼顾伤害和生存节奏';
-  return '均衡位，贡献分布相对平均';
-};
-
 const getSurvivalText = (record: RankEntry, rankings: RankEntry[]): string => {
   const avgDowns = teamAverage(rankings, getDowns);
   const avgAlive = teamAverage(rankings, getAverageTimeAlive);
@@ -228,7 +201,6 @@ const metricTips = {
   revives: { label: '扶起', tip: '活动期间总扶起队友次数' },
   rescueRate: { label: '救援率', tip: '扶起数 ÷ 被击倒次数，衡量倒地后的复位贡献' },
   knockConversionRate: { label: '击倒转化', tip: '击杀数 ÷ 击倒数，衡量补枪和收割转化' },
-  contribution: { label: '团队贡献评价', tip: '结合击杀、击倒、扶起、助攻和稳定性生成的团队定位' },
   survival: { label: '生存稳定性', tip: '结合被击倒次数和平均生存时间判断风险状态' },
   headshots: { label: '爆头', tip: '活动期间总爆头击杀数' },
   top10: { label: '前十次数', tip: '活动期间进入前十的场次数' },
@@ -347,71 +319,21 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
         {
           title: '玩家信息',
           key: 'player',
-          render: (_: unknown, record: RankEntry) => {
-            const tags = resolveRankTags(record, rankings);
-            const teamTags = getTeamViewTags(record, rankings);
-            return (
-              <div style={{ display: 'grid', gap: 8, minWidth: 0, wordBreak: 'break-word' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 700, fontSize: 15, overflowWrap: 'anywhere' }}>{record.GameName || '-'}</span>
-                  <Tag color={record.AnalysisVersion === 'v3' ? 'geekblue' : 'default'}>{(record.AnalysisVersion || 'v1').toUpperCase()}</Tag>
-                </div>
-                {teamTags.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {teamTags.map((tag) => (
-                      <Tag
-                        key={`${record.RankNo}-${tag.label}`}
-                        style={{ marginInlineEnd: 0, borderColor: `${tag.color}66`, color: tag.color, background: `${tag.color}18` }}
-                      >
-                        {tag.label}
-                      </Tag>
-                    ))}
-                  </div>
-                )}
-                {tags.length > 0 ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {tags.map((tag, index) => {
-                      const info = tagInfo[tag.code];
-                      const content = info ? (
-                        <div style={{ maxWidth: 300, display: 'grid', gap: 6 }}>
-                          <div><strong>含义：</strong>{info.description}</div>
-                          <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                            <strong>触发条件：</strong>{info.criteria}
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ maxWidth: 280, color: 'var(--text-muted)', fontSize: 12 }}>暂无详细解释</div>
-                      );
-                      return (
-                        <span
-                          key={`${record.RankNo}-${tag.label}-${index}`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Popover
-                            content={content}
-                            title={tag.label}
-                            trigger="click"
-                            placement="top"
-                          >
-                            <Tag color={tag.color} style={{ cursor: 'pointer' }}>{tag.label}</Tag>
-                          </Popover>
-                        </span>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{record.RankLabel || '点击展开查看详情'}</div>
-                )}
-              </div>
-            );
-          },
+          render: (_: unknown, record: RankEntry) => (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+              <span style={{ fontWeight: 700, fontSize: 15, overflowWrap: 'anywhere' }}>{record.GameName || '-'}</span>
+              <Tag color={record.AnalysisVersion === 'v4' ? 'geekblue' : 'default'}>{(record.AnalysisVersion || 'v1').toUpperCase()}</Tag>
+            </div>
+          ),
         },
         {
-          title: titleWithTip('核心指标', '默认展示击杀、击倒、伤害、扶起和被击倒；点击行可展开查看输出、协作和风险详情'),
+          title: titleWithTip('核心指标', '默认展示击杀、K/D、场均伤害、击倒、总伤害、扶起和被击倒；点击行可展开查看输出、协作和风险详情'),
           key: 'coreMetrics',
           render: (_: unknown, record: RankEntry) => (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {renderCoreMetric(metricTips.kills, formatCount(record.Kills), record.Kills === maxima.kills && record.Kills > 0)}
+              {renderCoreMetric(metricTips.kda, formatFixed(record.KDA, 2), (record.KDA || 0) === maxima.kda && (record.KDA || 0) > 0)}
+              {renderCoreMetric(metricTips.avgDamage, formatFixed(record.AvgDamage, 0), (record.AvgDamage || 0) === maxima.avgDamage && (record.AvgDamage || 0) > 0)}
               {renderCoreMetric(metricTips.dbnos, formatCount(record.DBNOs), (record.DBNOs || 0) === maxima.dbnos && (record.DBNOs || 0) > 0)}
               {renderCoreMetric(metricTips.totalDamage, formatFixed(getTotalDamage(record), 0), getTotalDamage(record) === maxima.totalDamage && getTotalDamage(record) > 0)}
               {renderCoreMetric(metricTips.revives, formatCount(record.Revives), (record.Revives || 0) === maxima.revives && (record.Revives || 0) > 0)}
@@ -424,14 +346,14 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
           dataIndex: 'Score',
           key: 'score',
           width: 96,
-          render: (value: number, record: RankEntry) => {
+          render: (value: number) => {
             const highlighted = (value || 0) === maxima.score && (value || 0) > 0;
             return (
               <div style={{ display: 'grid', gap: 4 }}>
                 <span style={{ fontWeight: highlighted ? 700 : 600, fontSize: 18, color: highlighted ? '#f0a500' : 'inherit' }}>
                   {formatFixed(value, 1)}
                 </span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'normal' }}>{record.RankLabel || '综合评分'}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'normal' }}>综合评分</span>
               </div>
             );
           },
@@ -457,7 +379,6 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
                 renderDetailMetric(metricTips.assists, formatCount(record.Assists), record.Assists === maxima.assists && record.Assists > 0),
                 renderDetailMetric(metricTips.rescueRate, formatPercent(getRescueRate(record)), getRescueRate(record) === maxima.rescueRate && getRescueRate(record) !== null),
                 renderDetailMetric(metricTips.teamScore, formatFixed(record.TeamScore, 1), (record.TeamScore || 0) === maxima.teamScore && (record.TeamScore || 0) > 0),
-                renderDetailMetric(metricTips.contribution, getContributionText(record, rankings)),
               ])}
               {renderDetailSection('风险', [
                 renderDetailMetric(metricTips.downs, formatCount(getDowns(record)), getDowns(record) === maxima.downs && getDowns(record) > 0),
@@ -486,20 +407,6 @@ export default function CompactRankingTable({ rankings, size = 'small' }: Compac
               )}
             </div>
 
-            {record.Comment && (
-              <div
-                style={{
-                  padding: '10px 12px',
-                  borderRadius: 12,
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface-elevated, rgba(255, 255, 255, 0.03))',
-                  lineHeight: 1.6,
-                }}
-              >
-                <span style={{ color: 'var(--text-muted)', marginRight: 8 }}>评价</span>
-                {record.Comment}
-              </div>
-            )}
           </div>
         ),
       }}

@@ -21,7 +21,6 @@ const (
 	TagDuskShooter = "dusk_shooter" // 夕阳红枪法
 	TagBoxKing     = "box_king"     // 盒子精
 	TagBalanced    = "balanced"     // 均衡型
-	TagMVP         = "mvp"          // 综合分 No.1
 )
 
 // 置信度档位。
@@ -55,7 +54,6 @@ var tagCatalog = map[string]tagDef{
 	TagDuskShooter: {Code: TagDuskShooter, Label: "💫 夕阳红枪法", Color: "#bfbfbf"},
 	TagBoxKing:     {Code: TagBoxKing, Label: "📦 盒子精", Color: "#8c8c8c"},
 	TagBalanced:    {Code: TagBalanced, Label: "⚖️ 均衡", Color: "#13c2c2"},
-	TagMVP:         {Code: TagMVP, Label: "🏅 MVP", Color: "#f0a500"},
 }
 
 // 主称号优先级（数值越小越优先）。参考设计稿 §12.2。
@@ -74,7 +72,6 @@ var primaryTitleOrder = map[string]int{
 	TagCoward:      34,
 	TagWeak:        35,
 	TagBalanced:    90,
-	TagMVP:         99, // MVP 仅作辅助标签，不作为主称号
 }
 
 func makeTag(code string) RankTag {
@@ -276,15 +273,10 @@ func computeSubScores(entries []RankEntry) {
 }
 
 // applyTags 为每个 entry 计算多标签、主称号和评价文案。
-func applyTags(entries []RankEntry, mvpRegID int64) {
+func applyTags(entries []RankEntry) {
 	for i := range entries {
 		e := &entries[i]
 		tags := buildTagsForEntry(*e)
-
-		// MVP（综合分 No.1）
-		if mvpRegID > 0 && e.RegID == mvpRegID && e.Matches > 0 {
-			tags = append([]RankTag{makeTag(TagMVP)}, tags...)
-		}
 
 		e.Tags = dedupeTags(tags)
 		e.PrimaryTitle = pickPrimaryTitle(e.Tags)
@@ -310,10 +302,6 @@ func pickPrimaryTitle(tags []RankTag) *RankTag {
 	best := -1
 	bestPriority := math.MaxInt
 	for i, t := range tags {
-		// MVP 仅作辅助标签，不作为主称号
-		if t.Code == TagMVP {
-			continue
-		}
 		p, ok := primaryTitleOrder[t.Code]
 		if !ok {
 			continue
@@ -528,12 +516,5 @@ func FinalizeRankings(entries []RankEntry, analysisStatus string) {
 	}
 	assignRankLabels(entries)
 
-	var mvpRegID int64
-	for i := range entries {
-		if entries[i].Matches > 0 && entries[i].Score > 0 {
-			mvpRegID = entries[i].RegID
-			break
-		}
-	}
-	applyTags(entries, mvpRegID)
+	applyTags(entries)
 }

@@ -20,16 +20,32 @@ import (
 	"github.com/SayAMDYES/pubg-queue/internal/middleware"
 )
 
+//go:embed VERSION
+var versionFile string
+
+var version = "dev"
+
 //go:embed frontend/dist/*
 var frontendFS embed.FS
 
 func main() {
+	if version == "dev" {
+		version = strings.TrimSpace(versionFile)
+	}
+
 	adminPass := flag.String("admin-pass", "", "管理员明文密码（启动时哈希化，不写磁盘）")
+	showVersion := flag.Bool("version", false, "显示版本号")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	if *adminPass == "" {
 		fmt.Fprintf(os.Stderr, "用法: %s --admin-pass <明文密码>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "示例: %s --admin-pass 'yourpassword'\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "查看版本: %s --version\n", os.Args[0])
 		os.Exit(1)
 	}
 

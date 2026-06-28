@@ -1,10 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Table, Tag, Button, message, Modal, Spin, Descriptions, Input, Popconfirm, Progress } from 'antd';
+import { Table, Tag, Button, message, Modal, Spin, Descriptions, Input, AutoComplete, Popconfirm, Progress } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, DeleteOutlined, PlayCircleOutlined, StopOutlined, PlusOutlined, CloseOutlined, LoadingOutlined, WarningOutlined } from '@ant-design/icons';
-import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, adminGetRankingStatus, adminStartEvent, adminEndEvent, adminManualRegister, adminRemoveRegistration, type AdminEventDetailData, type RankingStatusData } from '../../api';
-import { formatDateTime } from '../../utils';
+import { adminGetEventDetail, adminClearEvent, adminDeleteEvent, adminRefreshRankings, adminGetRankingStatus, adminStartEvent, adminEndEvent, adminManualRegister, adminRemoveRegistration, adminListGameNames, type AdminEventDetailData, type AdminGameNameStat, type RankingStatusData } from '../../api';
+import { formatDateTime, fuzzyScore } from '../../utils';
 import CompactRankingTable from '../../components/CompactRankingTable';
+
+function rankGameNames(query: string, pool: AdminGameNameStat[], limit: number): AdminGameNameStat[] {
+  const q = query.trim();
+  if (!q) return [];
+  return pool
+    .map((candidate) => ({ candidate, score: fuzzyScore(q, candidate.name) }))
+    .filter(({ score }) => score >= 0)
+    .sort((a, b) => b.score - a.score || b.candidate.total - a.candidate.total)
+    .slice(0, limit)
+    .map(({ candidate }) => candidate);
+}
 
 /** 格式化时间范围，支持 HH:mm 和 YYYY-MM-DDTHH:mm 两种输入 */
 function formatTimeRange(start?: string, end?: string): string {
@@ -40,6 +51,7 @@ export default function AdminEventDetail() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AdminEventDetailData | null>(null);
   const [rankingCalc, setRankingCalc] = useState<RankingStatusData>({ status: 'idle', current: 0, total: 0 });
+  const [gameNameCandidates, setGameNameCandidates] = useState<AdminGameNameStat[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPhaseRef = useRef<string>('');
 
@@ -100,6 +112,12 @@ export default function AdminEventDetail() {
   };
 
   useEffect(() => { load(); syncRankingStatus(); }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    adminListGameNames()
+      .then((res) => setGameNameCandidates(res.data))
+      .catch(() => { /* 候选加载失败不影响手动输入 */ });
+  }, []);
 
   // Auto-refresh rankings once on load if pubgEnabled and no rankings yet
   useEffect(() => {
@@ -262,6 +280,7 @@ export default function AdminEventDetail() {
                     key={idx}
                     slot={slot}
                     date={date!}
+                    gameNameCandidates={gameNameCandidates}
                     onRefresh={load}
                   />
                 ))}
@@ -344,13 +363,27 @@ export default function AdminEventDetail() {
 interface SlotRowProps {
   slot: { teamNo: number; slotNo: number; name: string; phone: string; filled: boolean; regId: number };
   date: string;
+  gameNameCandidates: AdminGameNameStat[];
   onRefresh: () => void;
 }
 
-function SlotRow({ slot, date, onRefresh }: SlotRowProps) {
+function SlotRow({ slot, date, gameNameCandidates, onRefresh }: SlotRowProps) {
   const [editing, setEditing] = useState(false);
   const [inputVal, setInputVal] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const options = rankGameNames(inputVal, gameNameCandidates, 8).map((candidate) => ({
+    value: candidate.name,
+    label: (
+      <span>
+        {candidate.name}
+        {candidate.users > 1 && (
+          <span style={{ color: 'var(--text-muted)', marginLeft: 8, fontSize: 12 }}>
+            {candidate.users} 人使用
+          </span>
+        )}
+      </span>
+    ),
+  }));
 
   const handleSubmit = async () => {
     const name = inputVal.trim();
@@ -393,15 +426,19 @@ function SlotRow({ slot, date, onRefresh }: SlotRowProps) {
         </>
       ) : editing ? (
         <>
-          <Input
+          <AutoComplete
             size="small"
-            placeholder="输入游戏名"
+            options={options}
+            filterOption={false}
+            notFoundContent={null}
+            placeholder="输入或选择游戏名"
             value={inputVal}
-            onChange={(e) => setInputVal(e.target.value)}
-            onPressEnter={handleSubmit}
+            onChange={setInputVal}
             style={{ flex: 1 }}
             autoFocus
-          />
+          >
+            <Input onPressEnter={handleSubmit} />
+          </AutoComplete>
           <Button size="small" type="primary" loading={submitting} onClick={handleSubmit}>确定</Button>
           <Button size="small" onClick={() => { setEditing(false); setInputVal(''); }}>取消</Button>
         </>

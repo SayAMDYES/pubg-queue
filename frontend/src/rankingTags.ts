@@ -60,10 +60,6 @@ export const tagInfo: Record<string, { description: string; criteria: string }> 
     description: '没有特别突出的强项，也不是明显的短板。',
     criteria: '未命中其他标签且中位档指标达标：130 ≤ ADR < 190 且 0.95 ≤ K/D < 1.35 且 0.9 ≤ KPG < 1.3 且 前十率 ≥ 25%（有遥测时 0.8 ≤ 换血比 ≤ 1.05）',
   },
-  mvp: {
-    description: '本场活动综合评分队内第一名。',
-    criteria: '出勤 ≥ 1 场且综合分 (Score) 队内最高',
-  },
 };
 
 /**
@@ -104,7 +100,6 @@ export function fallbackComputeTags(record: RankEntry, all: RankEntry[]): TagDef
   const deathsPerMatch = record.Matches > 0 ? record.Deaths / record.Matches : 0;
 
   const result: TagDef[] = [];
-  if (record.RankNo === 1) result.push({ code: 'mvp', label: '🏅 MVP', color: '#f0a500' });
 
   if (avgADR > 0 && adr > avgADR * 1.2 && avgKPG > 0 && kpg > avgKPG * 1.2)
     result.push({ code: 'ace', label: '🔥 钢枪王', color: '#ff4d4f' });
@@ -206,7 +201,7 @@ export function fallbackComputeTags(record: RankEntry, all: RankEntry[]): TagDef
   )
     result.push({ code: 'box_king', label: '📦 盒子精', color: '#8c8c8c' });
 
-  if (!result.some((t) => t.code !== 'mvp'))
+  if (result.length === 0)
     result.push({ code: 'balanced', label: '⚖️ 均衡', color: '#13c2c2' });
   return result;
 }

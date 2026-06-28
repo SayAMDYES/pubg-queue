@@ -1,9 +1,11 @@
 version: "3.8"
 services:
   pubg-queue:
+    image: ${IMAGE_NAME:-pubg-queue}:${APP_VERSION:-1.1.0}
     build:
       context: .
       args:
+        - APP_VERSION=${APP_VERSION:-1.1.0}
         - GOPROXY=${GOPROXY:-https://proxy.golang.org,direct}
         - GONOSUMDB=${GONOSUMDB:-}
         - NPM_REGISTRY=${NPM_REGISTRY:-https://registry.npmjs.org}

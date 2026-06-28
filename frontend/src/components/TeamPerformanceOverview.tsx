@@ -39,10 +39,6 @@ type TeamStats = {
   knockConversionRate: number | null;
   bestRescuer: PlayerTeamStats | null;
   mostDowned: PlayerTeamStats | null;
-  topKiller: PlayerTeamStats | null;
-  topDamage: PlayerTeamStats | null;
-  stabilityLabel: string;
-  comment: string;
 };
 
 const toneColor: Record<MetricTone, string> = {
@@ -131,26 +127,6 @@ export function buildTeamStats(rankings: RankEntry[]): TeamStats {
   const knockConversionRate = totalKnocks > 0 ? totalKills / totalKnocks : null;
   const bestRescuer = pickMax(players, (player) => player.revives);
   const mostDowned = pickMax(players, (player) => player.downs);
-  const topKiller = pickMax(players, (player) => player.kills);
-  const topDamage = pickMax(players, (player) => player.damage);
-  const topKnocker = pickMax(players, (player) => player.knocks);
-  const killsPerMatch = teamMatches > 0 ? totalKills / teamMatches : totalKills;
-  const downsPerMatch = teamMatches > 0 ? totalDowns / teamMatches : totalDowns;
-
-  let stabilityLabel = '稳定';
-  if (totalKnocks > 0 && totalKills / totalKnocks < 0.62) stabilityLabel = '需要补枪';
-  else if (downsPerMatch >= players.length * 0.8 && (rescueRate ?? 0) < 0.35) stabilityLabel = '需要补位';
-  else if (killsPerMatch >= players.length * 1.4 && downsPerMatch >= players.length * 0.65) stabilityLabel = '偏冒险';
-  else if (killsPerMatch >= players.length * 1.3) stabilityLabel = '激进';
-
-  const firepower = totalDamage >= players.length * 450 || totalKnocks >= totalKills * 0.8 ? '输出充足' : '输出仍有提升空间';
-  const conversion = totalKnocks > 0 && totalKills / totalKnocks < 0.68 ? '击倒后的补枪转化还可以继续提升' : '击倒转化比较顺畅';
-  const rescue = totalRevives >= Math.max(2, totalDowns * 0.35) ? '救援协作在线' : '救援和补位节奏需要加强';
-  const risk = totalDowns >= players.length * 2 && totalRevives < totalDowns * 0.35 ? '队伍被击倒次数偏高，需要提升掩体和交叉补位节奏' : '生存风险整体可控';
-  const killerText = topKiller && topKiller.kills > 0 ? `${topKiller.name} 负责主要击杀` : '暂无明确击杀核心';
-  const damageText = topDamage && topDamage.damage > 0 ? `${topDamage.name} 伤害最高` : '伤害核心尚不明显';
-  const supportText = bestRescuer && bestRescuer.revives > 0 ? `${bestRescuer.name} 是救援核心` : rescue;
-  const knockText = topKnocker && topKnocker.knocks > 0 && topKnocker.name !== topKiller?.name ? `${topKnocker.name} 提供关键击倒` : conversion;
 
   return {
     players,
@@ -168,10 +144,6 @@ export function buildTeamStats(rankings: RankEntry[]): TeamStats {
     knockConversionRate,
     bestRescuer: bestRescuer && bestRescuer.revives > 0 ? bestRescuer : null,
     mostDowned: mostDowned && mostDowned.downs > 0 ? mostDowned : null,
-    topKiller,
-    topDamage,
-    stabilityLabel,
-    comment: `本场队伍${firepower}，${killerText}，${damageText}；${knockText}，${supportText}，${risk}。`,
   };
 }
 
@@ -311,12 +283,8 @@ export default function TeamPerformanceOverview({ rankings }: TeamPerformanceOve
               { label: '平均伤害', value: formatNumber(stats.avgDamage, 0), tone: 'gold' },
               { label: '队伍场次', value: String(stats.teamMatches), tone: 'muted' },
               { label: '总助攻', value: String(stats.totalAssists), tone: 'blue' },
-              { label: '生存评价', value: stats.stabilityLabel, tone: stats.stabilityLabel.includes('需要') ? 'red' : stats.stabilityLabel === '偏冒险' ? 'orange' : 'green' },
             ]}
           />
-        </div>
-        <div style={{ border: '1px solid rgba(240,165,0,0.16)', borderLeft: '3px solid rgba(240,165,0,0.55)', borderRadius: 10, padding: '10px 12px', background: 'rgba(240,165,0,0.055)', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.7 }}>
-          {stats.comment}
         </div>
       </div>
       <TeamContributionAnalysis stats={stats} />

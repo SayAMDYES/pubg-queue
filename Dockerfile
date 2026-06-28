@@ -20,6 +20,7 @@ WORKDIR /app
 ARG GOPROXY=https://proxy.golang.org,direct
 ARG GONOSUMDB=
 ARG USE_VENDOR=0
+ARG APP_VERSION=dev
 ENV GOPROXY=${GOPROXY} GONOSUMDB=${GONOSUMDB}
 COPY go.mod go.sum ./
 # 仅在非 vendor 模式下下载模块；--mount=type=cache 使模块缓存跨次构建复用
@@ -29,10 +30,14 @@ COPY . .
 COPY --from=frontend /app/frontend/dist ./frontend/dist
 RUN --mount=type=cache,target=/go/pkg/mod,id=pubg-gomod \
     --mount=type=cache,target=/root/.cache/go-build,id=pubg-gobuild \
+    APP_BUILD_VERSION="${APP_VERSION}"; \
+    if [ "${APP_BUILD_VERSION}" = "dev" ] && [ -f VERSION ]; then \
+        APP_BUILD_VERSION="$(tr -d '[:space:]' < VERSION)"; \
+    fi; \
     if [ "${USE_VENDOR}" = "1" ]; then \
-        CGO_ENABLED=0 go build -mod=vendor -ldflags="-s -w" -o pubg-queue .; \
+        CGO_ENABLED=0 go build -mod=vendor -ldflags="-s -w -X main.version=${APP_BUILD_VERSION}" -o pubg-queue .; \
     else \
-        CGO_ENABLED=0 go build -ldflags="-s -w" -o pubg-queue .; \
+        CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${APP_BUILD_VERSION}" -o pubg-queue .; \
     fi
 
 # ── 阶段 3：运行 ──

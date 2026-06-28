@@ -4,6 +4,7 @@ set -e
 
 APP_NAME="pubg-queue"
 OUTPUT_DIR="$(pwd)"
+APP_VERSION="$(tr -d '[:space:]' < VERSION)"
 
 echo ""
 echo "╔══════════════════════════════════╗"
@@ -36,6 +37,6 @@ echo "→ 目标平台：${GOOS}/${GOARCH}"
 echo "→ 输出路径：${OUTPUT}"
 echo ""
 
-GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w" -o "$OUTPUT" .
+GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w -X main.version=${APP_VERSION}" -o "$OUTPUT" .
 
 echo "✓ 打包完成：$OUTPUT"

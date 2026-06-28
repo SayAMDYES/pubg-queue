@@ -142,6 +142,7 @@ func Migrate(db *sql.DB) error {
 			comment             TEXT    NOT NULL DEFAULT '',
 			confidence          TEXT    NOT NULL DEFAULT '',
 			analysis_status     TEXT    NOT NULL DEFAULT 'full_ready',
+			analysis_version    TEXT    NOT NULL DEFAULT 'v3',
 			rank_no             INTEGER,
 			rank_label          TEXT,
 			refreshed_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -221,6 +222,7 @@ func Migrate(db *sql.DB) error {
 		`ALTER TABLE event_rankings_v2 ADD COLUMN comment TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE event_rankings_v2 ADD COLUMN confidence TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE event_rankings_v2 ADD COLUMN analysis_status TEXT NOT NULL DEFAULT 'full_ready'`,
+		`ALTER TABLE event_rankings_v2 ADD COLUMN analysis_version TEXT NOT NULL DEFAULT 'v3'`,
 	}
 	for _, s := range alterStmts {
 		if _, err := db.Exec(s); err != nil {
